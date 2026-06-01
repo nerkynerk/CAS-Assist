@@ -1,0 +1,4 @@
+{"sessionId":"c83a01","runId":"pre-fix","hypothesisId":"H2","location":"backend/src/server.ts:20","message":"Server module initialized","data":{"port":5000,"env":"development"},"timestamp":1780286043293}
+{"sessionId":"c83a01","runId":"pre-fix","hypothesisId":"H3","location":"backend/src/server.ts:57","message":"Protected routes registered with auth middleware","data":{"routes":["/api/queue","/api/ai"]},"timestamp":1780286043311}
+{"sessionId":"c83a01","runId":"pre-fix","hypothesisId":"H5","location":"backend/src/server.ts:107","message":"Server listen callback fired","data":{"port":5000},"timestamp":1780286043315}
+{"sessionId":"c83a01","runId":"pre-fix","hypothesisId":"H4","location":"backend/src/server.ts:34","message":"JSON parser middleware registered","data":{"jsonLimit":"1mb"},"timestamp":1780286043310}

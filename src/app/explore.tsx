@@ -1,180 +1,272 @@
-import { Image } from 'expo-image';
-import { SymbolView } from 'expo-symbols';
-import { Platform, Pressable, ScrollView, StyleSheet } from 'react-native';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { useEffect, useRef, useState } from 'react';
+import {
+  ActivityIndicator,
+  RefreshControl,
+  ScrollView,
+  StyleSheet,
+  Text,
+  View,
+} from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 
-import { ExternalLink } from '@/components/external-link';
-import { ThemedText } from '@/components/themed-text';
-import { ThemedView } from '@/components/themed-view';
-import { Collapsible } from '@/components/ui/collapsible';
-import { WebBadge } from '@/components/web-badge';
-import { BottomTabInset, MaxContentWidth, Spacing } from '@/constants/theme';
+import { supabase } from '@/lib/supabase';
 import { useTheme } from '@/hooks/use-theme';
+import { Spacing } from '@/constants/theme';
 
-export default function TabTwoScreen() {
-  const safeAreaInsets = useSafeAreaInsets();
-  const insets = {
-    ...safeAreaInsets,
-    bottom: safeAreaInsets.bottom + BottomTabInset + Spacing.three,
-  };
-  const theme = useTheme();
+const PRIMARY = '#208AEF';
 
-  const contentPlatformStyle = Platform.select({
-    android: {
-      paddingTop: insets.top,
-      paddingLeft: insets.left,
-      paddingRight: insets.right,
-      paddingBottom: insets.bottom,
-    },
-    web: {
-      paddingTop: Spacing.six,
-      paddingBottom: Spacing.four,
-    },
+// ── Types ─────────────────────────────────────────────────────
+
+interface Announcement {
+  id: string;
+  title: string;
+  body: string;
+  audience: string;
+  is_pinned: boolean;
+  published_at: string;
+  expires_at: string | null;
+}
+
+// ── Helpers ───────────────────────────────────────────────────
+
+function formatDate(iso: string): string {
+  return new Date(iso).toLocaleDateString('en-PH', {
+    weekday: 'short',
+    month: 'short',
+    day: 'numeric',
+    year: 'numeric',
   });
+}
+
+const AUDIENCE_COLOR: Record<string, string> = {
+  all:     '#208AEF',
+  student: '#16A34A',
+  faculty: '#8B5CF6',
+  staff:   '#F59E0B',
+};
+
+const AUDIENCE_LABEL: Record<string, string> = {
+  all:     'Everyone',
+  student: 'Students',
+  faculty: 'Faculty',
+  staff:   'Staff',
+};
+
+// ── Announcement card ─────────────────────────────────────────
+
+function AnnouncementCard({
+  item,
+  bgEl,
+  textColor,
+  textSec,
+}: {
+  item: Announcement;
+  bgEl: string;
+  textColor: string;
+  textSec: string;
+}) {
+  const audienceColor = AUDIENCE_COLOR[item.audience] ?? '#208AEF';
 
   return (
-    <ScrollView
-      style={[styles.scrollView, { backgroundColor: theme.background }]}
-      contentInset={insets}
-      contentContainerStyle={[styles.contentContainer, contentPlatformStyle]}>
-      <ThemedView style={styles.container}>
-        <ThemedView style={styles.titleContainer}>
-          <ThemedText type="subtitle">Explore</ThemedText>
-          <ThemedText style={styles.centerText} themeColor="textSecondary">
-            This starter app includes example{'\n'}code to help you get started.
-          </ThemedText>
+    <View style={[styles.card, { backgroundColor: bgEl }, item.is_pinned && styles.cardPinned]}>
+      {item.is_pinned && (
+        <View style={styles.pinnedRow}>
+          <Text style={styles.pinnedText}>📌  Pinned</Text>
+        </View>
+      )}
 
-          <ExternalLink href="https://docs.expo.dev" asChild>
-            <Pressable style={({ pressed }) => pressed && styles.pressed}>
-              <ThemedView type="backgroundElement" style={styles.linkButton}>
-                <ThemedText type="link">Expo documentation</ThemedText>
-                <SymbolView
-                  tintColor={theme.text}
-                  name={{ ios: 'arrow.up.right.square', android: 'link', web: 'link' }}
-                  size={12}
-                />
-              </ThemedView>
-            </Pressable>
-          </ExternalLink>
-        </ThemedView>
+      <View style={styles.cardHeader}>
+        <Text style={[styles.cardTitle, { color: textColor }]}>{item.title}</Text>
+        <View style={[styles.audienceBadge, { backgroundColor: audienceColor + '20' }]}>
+          <Text style={[styles.audienceText, { color: audienceColor }]}>
+            {AUDIENCE_LABEL[item.audience] ?? item.audience}
+          </Text>
+        </View>
+      </View>
 
-        <ThemedView style={styles.sectionsWrapper}>
-          <Collapsible title="File-based routing">
-            <ThemedText type="small">
-              This app has two screens: <ThemedText type="code">src/app/index.tsx</ThemedText> and{' '}
-              <ThemedText type="code">src/app/explore.tsx</ThemedText>
-            </ThemedText>
-            <ThemedText type="small">
-              The layout file in <ThemedText type="code">src/app/_layout.tsx</ThemedText> sets up
-              the tab navigator.
-            </ThemedText>
-            <ExternalLink href="https://docs.expo.dev/router/introduction">
-              <ThemedText type="linkPrimary">Learn more</ThemedText>
-            </ExternalLink>
-          </Collapsible>
+      <Text style={[styles.cardBody, { color: textSec }]}>{item.body}</Text>
 
-          <Collapsible title="Android, iOS, and web support">
-            <ThemedView type="backgroundElement" style={styles.collapsibleContent}>
-              <ThemedText type="small">
-                You can open this project on Android, iOS, and the web. To open the web version,
-                press <ThemedText type="smallBold">w</ThemedText> in the terminal running this
-                project.
-              </ThemedText>
-              <Image
-                source={require('@/assets/images/tutorial-web.png')}
-                style={styles.imageTutorial}
-              />
-            </ThemedView>
-          </Collapsible>
+      <Text style={[styles.cardDate, { color: textSec }]}>{formatDate(item.published_at)}</Text>
+    </View>
+  );
+}
 
-          <Collapsible title="Images">
-            <ThemedText type="small">
-              For static images, you can use the <ThemedText type="code">@2x</ThemedText> and{' '}
-              <ThemedText type="code">@3x</ThemedText> suffixes to provide files for different
-              screen densities.
-            </ThemedText>
-            <Image source={require('@/assets/images/react-logo.png')} style={styles.imageReact} />
-            <ExternalLink href="https://reactnative.dev/docs/images">
-              <ThemedText type="linkPrimary">Learn more</ThemedText>
-            </ExternalLink>
-          </Collapsible>
+// ── Screen ────────────────────────────────────────────────────
 
-          <Collapsible title="Light and dark mode components">
-            <ThemedText type="small">
-              This template has light and dark mode support. The{' '}
-              <ThemedText type="code">useColorScheme()</ThemedText> hook lets you inspect what the
-              user&apos;s current color scheme is, and so you can adjust UI colors accordingly.
-            </ThemedText>
-            <ExternalLink href="https://docs.expo.dev/develop/user-interface/color-themes/">
-              <ThemedText type="linkPrimary">Learn more</ThemedText>
-            </ExternalLink>
-          </Collapsible>
+export default function AnnouncementsScreen() {
+  const theme = useTheme();
 
-          <Collapsible title="Animations">
-            <ThemedText type="small">
-              This template includes an example of an animated component. The{' '}
-              <ThemedText type="code">src/components/ui/collapsible.tsx</ThemedText> component uses
-              the powerful <ThemedText type="code">react-native-reanimated</ThemedText> library to
-              animate opening this hint.
-            </ThemedText>
-          </Collapsible>
-        </ThemedView>
-        {Platform.OS === 'web' && <WebBadge />}
-      </ThemedView>
-    </ScrollView>
+  const [announcements, setAnnouncements] = useState<Announcement[]>([]);
+  const [loading, setLoading]             = useState(true);
+  const [refreshing, setRefreshing]       = useState(false);
+  const [error, setError]                 = useState<string | null>(null);
+  const [liveTag, setLiveTag]             = useState(false);
+  const fetchRef = useRef(fetchAnnouncements);
+
+  async function fetchAnnouncements() {
+    setError(null);
+    const now = new Date().toISOString();
+
+    const { data, error: dbErr } = await supabase
+      .from('announcements')
+      .select('id, title, body, audience, is_pinned, published_at, expires_at')
+      .eq('state', 'active')
+      .or(`expires_at.is.null,expires_at.gt.${now}`)
+      .order('is_pinned', { ascending: false })
+      .order('published_at', { ascending: false });
+
+    if (dbErr) {
+      setError('Failed to load announcements. Pull down to retry.');
+    } else {
+      setAnnouncements(data ?? []);
+    }
+  }
+
+  async function load() {
+    setLoading(true);
+    await fetchAnnouncements();
+    setLoading(false);
+  }
+
+  async function onRefresh() {
+    setRefreshing(true);
+    await fetchAnnouncements();
+    setRefreshing(false);
+  }
+
+  useEffect(() => { fetchRef.current = fetchAnnouncements; });
+
+  useEffect(() => {
+    load();
+
+    // ── Supabase Realtime subscription ───────────────────────
+    // Listens for INSERT/UPDATE on announcements and refreshes
+    // the list automatically — no manual pull-to-refresh needed.
+    const channel = supabase
+      .channel('announcements-live')
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'announcements' },
+        () => {
+          setLiveTag(true);
+          fetchRef.current();
+          setTimeout(() => setLiveTag(false), 3000);
+        },
+      )
+      .subscribe();
+
+    return () => { supabase.removeChannel(channel); };
+  }, []);
+
+  return (
+    <SafeAreaView style={[styles.safe, { backgroundColor: theme.background }]}>
+      <ScrollView
+        showsVerticalScrollIndicator={false}
+        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
+        contentContainerStyle={styles.scroll}>
+
+        <View style={styles.titleRow}>
+          <Text style={[styles.screenTitle, { color: theme.text }]}>Announcements</Text>
+          {liveTag && (
+            <View style={styles.liveBadge}>
+              <Text style={styles.liveText}>● LIVE</Text>
+            </View>
+          )}
+        </View>
+        <Text style={[styles.screenSub, { color: theme.textSecondary }]}>
+          Official updates from the College of Arts and Sciences
+        </Text>
+
+        {loading ? (
+          <ActivityIndicator color={PRIMARY} style={styles.loader} />
+        ) : error ? (
+          <View style={[styles.errorCard, { backgroundColor: '#FEE2E2' }]}>
+            <Text style={styles.errorText}>{error}</Text>
+          </View>
+        ) : announcements.length === 0 ? (
+          <View style={[styles.emptyCard, { backgroundColor: theme.backgroundElement }]}>
+            <Text style={styles.emptyIcon}>📢</Text>
+            <Text style={[styles.emptyTitle, { color: theme.text }]}>No announcements</Text>
+            <Text style={[styles.emptyText, { color: theme.textSecondary }]}>
+              Check back later for updates from CAS.
+            </Text>
+          </View>
+        ) : (
+          announcements.map(item => (
+            <AnnouncementCard
+              key={item.id}
+              item={item}
+              bgEl={theme.backgroundElement}
+              textColor={theme.text}
+              textSec={theme.textSecondary}
+            />
+          ))
+        )}
+
+      </ScrollView>
+    </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
-  scrollView: {
-    flex: 1,
-  },
-  contentContainer: {
-    flexDirection: 'row',
-    justifyContent: 'center',
-  },
-  container: {
-    maxWidth: MaxContentWidth,
-    flexGrow: 1,
-  },
-  titleContainer: {
-    gap: Spacing.three,
-    alignItems: 'center',
-    paddingHorizontal: Spacing.four,
-    paddingVertical: Spacing.six,
-  },
-  centerText: {
-    textAlign: 'center',
-  },
-  pressed: {
-    opacity: 0.7,
-  },
-  linkButton: {
-    flexDirection: 'row',
-    paddingHorizontal: Spacing.four,
-    paddingVertical: Spacing.two,
-    borderRadius: Spacing.five,
-    justifyContent: 'center',
-    gap: Spacing.one,
-    alignItems: 'center',
-  },
-  sectionsWrapper: {
-    gap: Spacing.five,
-    paddingHorizontal: Spacing.four,
+  safe: { flex: 1 },
+  scroll: {
+    paddingHorizontal: Spacing.three,
+    paddingBottom: 100,
     paddingTop: Spacing.three,
+    gap: Spacing.two,
   },
-  collapsibleContent: {
-    alignItems: 'center',
+
+  titleRow:    { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  screenTitle: { fontSize: 24, fontWeight: '700' },
+  screenSub:   { fontSize: 14, marginTop: 2, marginBottom: Spacing.one },
+  liveBadge:   { backgroundColor: '#16A34A', paddingHorizontal: 8, paddingVertical: 3, borderRadius: 20 },
+  liveText:    { color: '#fff', fontSize: 11, fontWeight: '700' },
+  loader: { marginTop: Spacing.four },
+
+  // Cards
+  card: {
+    borderRadius: 16,
+    padding: Spacing.three,
+    gap: 8,
   },
-  imageTutorial: {
-    width: '100%',
-    aspectRatio: 296 / 171,
-    borderRadius: Spacing.three,
+  cardPinned: {
+    borderWidth: 1.5,
+    borderColor: '#F59E0B',
+  },
+  pinnedRow: { flexDirection: 'row', alignItems: 'center' },
+  pinnedText: { fontSize: 12, color: '#D97706', fontWeight: '600' },
+  cardHeader: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    justifyContent: 'space-between',
+    gap: 8,
+  },
+  cardTitle: { fontSize: 16, fontWeight: '700', flex: 1 },
+  audienceBadge: {
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 20,
+  },
+  audienceText: { fontSize: 11, fontWeight: '600' },
+  cardBody: { fontSize: 14, lineHeight: 20 },
+  cardDate: { fontSize: 12, marginTop: 2 },
+
+  // Error / Empty
+  errorCard: {
+    borderRadius: 12,
+    padding: Spacing.three,
     marginTop: Spacing.two,
   },
-  imageReact: {
-    width: 100,
-    height: 100,
-    alignSelf: 'center',
+  errorText: { color: '#DC2626', fontSize: 14 },
+  emptyCard: {
+    borderRadius: 16,
+    padding: 32,
+    alignItems: 'center',
+    gap: 8,
+    marginTop: Spacing.four,
   },
+  emptyIcon: { fontSize: 40 },
+  emptyTitle: { fontSize: 18, fontWeight: '700' },
+  emptyText: { fontSize: 14, textAlign: 'center' },
 });
