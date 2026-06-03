@@ -31,7 +31,11 @@ yarn-error.*
 *.pem
 
 # local env files
+.env
 .env*.local
+
+# Claude Code worktrees
+.claude/worktrees/
 
 # typescript
 *.tsbuildinfo
@@ -41,3 +45,4 @@ example
 # generated native folders
 /ios
 /android
+*.zip
