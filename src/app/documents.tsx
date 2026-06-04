@@ -11,14 +11,18 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
+import {
+  Academic,
+  AcademicIcon,
+  EmptyState,
+  IconButton,
+  SectionHeader,
+  StatusBadge,
+  SurfaceCard,
+} from '@/components/ui/academic-ui';
+import { Spacing } from '@/constants/theme';
 import { useAuth } from '@/context/auth';
 import { supabase } from '@/lib/supabase';
-import { useTheme } from '@/hooks/use-theme';
-import { Spacing } from '@/constants/theme';
-
-const PRIMARY = '#8B5CF6';
-
-// ── Types ─────────────────────────────────────────────────────
 
 interface DocumentRequest {
   id: string;
@@ -30,114 +34,89 @@ interface DocumentRequest {
   requested_at: string;
 }
 
-// ── Constants ─────────────────────────────────────────────────
+type ScreenView = 'list' | 'new';
 
 const DOC_TYPES: { value: string; label: string; description: string }[] = [
-  { value: 'transcript_of_records',      label: 'Transcript of Records',      description: 'Official academic record of grades' },
-  { value: 'certificate_of_enrollment',  label: 'Certificate of Enrollment',   description: 'Proof of current enrollment' },
-  { value: 'certificate_of_good_moral',  label: 'Certificate of Good Moral',   description: 'Character reference certificate' },
-  { value: 'honorable_dismissal',        label: 'Honorable Dismissal',         description: 'Transfer clearance document' },
-  { value: 'diploma',                    label: 'Diploma',                     description: 'Graduation certificate' },
-  { value: 'other',                      label: 'Other',                       description: 'Other document not listed above' },
+  { value: 'transcript_of_records', label: 'Transcript of Records', description: 'Official academic record of grades' },
+  { value: 'certificate_of_enrollment', label: 'Certificate of Enrollment', description: 'Proof of current enrollment' },
+  { value: 'certificate_of_good_moral', label: 'Certificate of Good Moral', description: 'Character reference certificate' },
+  { value: 'honorable_dismissal', label: 'Honorable Dismissal', description: 'Transfer clearance document' },
+  { value: 'diploma', label: 'Diploma', description: 'Graduation certificate' },
+  { value: 'other', label: 'Other', description: 'Other document not listed above' },
 ];
 
-const STATUS_COLOR: Record<string, string> = {
-  submitted:         '#208AEF',
-  under_evaluation:  '#F59E0B',
-  action_required:   '#EF4444',
-  processing:        '#8B5CF6',
-  ready_for_pickup:  '#10B981',
-  completed:         '#16A34A',
-  rejected:          '#DC2626',
-};
+const DOC_LABEL: Record<string, string> = Object.fromEntries(DOC_TYPES.map(item => [item.value, item.label]));
 
 const STATUS_LABEL: Record<string, string> = {
-  submitted:         'Submitted',
-  under_evaluation:  'Under Evaluation',
-  action_required:   'Action Required',
-  processing:        'Processing',
-  ready_for_pickup:  'Ready for Pickup',
-  completed:         'Completed',
-  rejected:          'Rejected',
+  submitted: 'Submitted',
+  under_evaluation: 'Under Evaluation',
+  action_required: 'Action Required',
+  processing: 'Processing',
+  ready_for_pickup: 'Ready for Pickup',
+  completed: 'Completed',
+  rejected: 'Rejected',
 };
 
-const DOC_LABEL: Record<string, string> = Object.fromEntries(
-  DOC_TYPES.map(d => [d.value, d.label])
-);
+const STATUS_TONE: Record<string, 'blue' | 'warning' | 'success' | 'error' | 'muted'> = {
+  submitted: 'blue',
+  under_evaluation: 'warning',
+  action_required: 'error',
+  processing: 'warning',
+  ready_for_pickup: 'success',
+  completed: 'success',
+  rejected: 'error',
+};
 
 function formatDate(iso: string) {
   return new Date(iso).toLocaleDateString('en-PH', {
-    month: 'short', day: 'numeric', year: 'numeric',
+    month: 'short',
+    day: 'numeric',
+    year: 'numeric',
   });
 }
 
-// ── Request card ──────────────────────────────────────────────
-
-function RequestCard({
-  item,
-  bgEl,
-  textColor,
-  textSec,
-}: {
-  item: DocumentRequest;
-  bgEl: string;
-  textColor: string;
-  textSec: string;
-}) {
-  const sc = STATUS_COLOR[item.status] ?? '#6B7280';
+function RequestCard({ item }: { item: DocumentRequest }) {
+  const tone = STATUS_TONE[item.status] ?? 'muted';
   return (
-    <View style={[styles.card, { backgroundColor: bgEl }]}>
-      <View style={styles.cardHeader}>
-        <Text style={[styles.docType, { color: textColor }]}>
-          {DOC_LABEL[item.document_type] ?? item.document_type}
-        </Text>
-        <View style={[styles.statusBadge, { backgroundColor: sc + '20' }]}>
-          <Text style={[styles.statusText, { color: sc }]}>
-            {STATUS_LABEL[item.status] ?? item.status}
+    <SurfaceCard style={styles.requestCard}>
+      <View style={styles.requestHeader}>
+        <View style={styles.docIcon}>
+          <AcademicIcon
+            name={{ ios: 'doc.text', android: 'description', web: 'description' }}
+            color={Academic.primary}
+            size={22}
+          />
+        </View>
+        <View style={styles.requestText}>
+          <Text style={styles.docTitle} numberOfLines={2}>{DOC_LABEL[item.document_type] ?? item.document_type}</Text>
+          <Text style={styles.requestMeta}>
+            {item.copies} {item.copies === 1 ? 'copy' : 'copies'} - Requested {formatDate(item.requested_at)}
           </Text>
         </View>
+        <StatusBadge label={STATUS_LABEL[item.status] ?? item.status} tone={tone} />
       </View>
-
-      <Text style={[styles.cardDetail, { color: textSec }]}>
-        Purpose: {item.purpose}
-      </Text>
-      <Text style={[styles.cardDetail, { color: textSec }]}>
-        Copies: {item.copies}
-      </Text>
-
-      {item.remarks && (
-        <View style={[styles.remarksBox, { backgroundColor: sc + '12' }]}>
-          <Text style={[styles.remarksLabel, { color: sc }]}>Staff note:</Text>
-          <Text style={[styles.remarksText, { color: textColor }]}>{item.remarks}</Text>
+      <Text style={styles.requestPurpose} numberOfLines={2}>Purpose: {item.purpose}</Text>
+      {item.remarks ? (
+        <View style={styles.remarksBox}>
+          <Text style={styles.remarksLabel}>Staff note</Text>
+          <Text style={styles.remarksText}>{item.remarks}</Text>
         </View>
-      )}
-
-      <Text style={[styles.cardDate, { color: textSec }]}>
-        Requested {formatDate(item.requested_at)}
-      </Text>
-    </View>
+      ) : null}
+    </SurfaceCard>
   );
 }
 
-// ── Screen ────────────────────────────────────────────────────
-
-type ScreenView = 'list' | 'new';
-
 export default function DocumentsScreen() {
-  const theme              = useTheme();
   const { profile, session } = useAuth();
-
-  const [view, setView]           = useState<ScreenView>('list');
-  const [requests, setRequests]   = useState<DocumentRequest[]>([]);
-  const [loading, setLoading]     = useState(true);
+  const [view, setView] = useState<ScreenView>('list');
+  const [requests, setRequests] = useState<DocumentRequest[]>([]);
+  const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
-
-  // Form state
-  const [docType, setDocType]       = useState('');
-  const [purpose, setPurpose]       = useState('');
-  const [copies, setCopies]         = useState(1);
+  const [docType, setDocType] = useState('');
+  const [purpose, setPurpose] = useState('');
+  const [copies, setCopies] = useState(1);
   const [submitting, setSubmitting] = useState(false);
-  const [formError, setFormError]   = useState<string | null>(null);
+  const [formError, setFormError] = useState<string | null>(null);
   const [formSuccess, setFormSuccess] = useState(false);
 
   const userId = profile?.id ?? session?.user.id;
@@ -166,11 +145,11 @@ export default function DocumentsScreen() {
 
     setSubmitting(true);
     const { error } = await supabase.from('document_requests').insert({
-      student_id:    userId,
+      student_id: userId,
       document_type: docType,
-      purpose:       purpose.trim(),
+      purpose: purpose.trim(),
       copies,
-      status:        'submitted',
+      status: 'submitted',
     });
     setSubmitting(false);
 
@@ -182,72 +161,49 @@ export default function DocumentsScreen() {
       setPurpose('');
       setCopies(1);
       await fetchRequests();
-      setTimeout(() => { setFormSuccess(false); setView('list'); }, 1800);
+      setTimeout(() => { setFormSuccess(false); setView('list'); }, 1500);
     }
   }
 
-  // ── New request form ─────────────────────────────────────────
   if (view === 'new') {
     return (
-      <SafeAreaView style={[styles.safe, { backgroundColor: theme.background }]}>
-        <ScrollView
-          keyboardShouldPersistTaps="handled"
-          contentContainerStyle={styles.scroll}>
-
-          <Pressable onPress={() => setView('list')} style={styles.backBtn}>
-            <Text style={[styles.backText, { color: PRIMARY }]}>← Back</Text>
-          </Pressable>
-
-          <Text style={[styles.screenTitle, { color: theme.text }]}>Request a Document</Text>
-          <Text style={[styles.screenSub, { color: theme.textSecondary }]}>
-            Processing takes 3–5 working days. You will be notified when ready.
-          </Text>
-
-          {formError && (
-            <View style={styles.errorBox}>
-              <Text style={styles.errorText}>{formError}</Text>
+      <SafeAreaView style={styles.safe}>
+        <ScrollView keyboardShouldPersistTaps="handled" contentContainerStyle={styles.scroll}>
+          <View style={styles.pageHeader}>
+            <IconButton
+              icon={{ ios: 'chevron.left', android: 'arrow_back', web: 'arrow_back' }}
+              onPress={() => setView('list')}
+              label="Back"
+              bg={Academic.muted}
+              color={Academic.textSecondary}
+            />
+            <View style={{ flex: 1 }}>
+              <Text style={styles.pageTitle}>Request Document</Text>
+              <Text style={styles.pageSub}>Processing time depends on office verification.</Text>
             </View>
-          )}
-          {formSuccess && (
-            <View style={styles.successBox}>
-              <Text style={styles.successText}>✓  Request submitted successfully!</Text>
-            </View>
-          )}
+          </View>
 
-          {/* Document type selection */}
-          <Text style={[styles.fieldLabel, { color: theme.textSecondary }]}>Document Type</Text>
+          {formError ? <View style={styles.errorBox}><Text style={styles.errorText}>{formError}</Text></View> : null}
+          {formSuccess ? <View style={styles.successBox}><Text style={styles.successText}>Request submitted successfully.</Text></View> : null}
+
+          <SectionHeader title="Document Type" />
           <View style={styles.docTypeGrid}>
-            {DOC_TYPES.map(d => {
-              const active = docType === d.value;
+            {DOC_TYPES.map(item => {
+              const active = docType === item.value;
               return (
-                <Pressable
-                  key={d.value}
-                  onPress={() => setDocType(d.value)}
-                  style={[
-                    styles.docTypeCard,
-                    {
-                      backgroundColor: active ? PRIMARY + '15' : theme.backgroundElement,
-                      borderColor:     active ? PRIMARY : 'transparent',
-                      borderWidth:     active ? 1.5 : 0,
-                    },
-                  ]}>
-                  <Text style={[styles.docTypeLabel, { color: active ? PRIMARY : theme.text }]}>
-                    {d.label}
-                  </Text>
-                  <Text style={[styles.docTypeDesc, { color: theme.textSecondary }]}>
-                    {d.description}
-                  </Text>
+                <Pressable key={item.value} onPress={() => setDocType(item.value)} style={[styles.docTypeCard, active && styles.docTypeCardActive]}>
+                  <Text style={[styles.docTypeLabel, active && styles.docTypeLabelActive]}>{item.label}</Text>
+                  <Text style={styles.docTypeDesc}>{item.description}</Text>
                 </Pressable>
               );
             })}
           </View>
 
-          {/* Purpose */}
-          <Text style={[styles.fieldLabel, { color: theme.textSecondary }]}>Purpose</Text>
+          <SectionHeader title="Purpose" />
           <TextInput
-            style={[styles.textarea, { backgroundColor: theme.backgroundElement, color: theme.text }]}
+            style={styles.textarea}
             placeholder="e.g. For scholarship application, employment requirements..."
-            placeholderTextColor={theme.textSecondary}
+            placeholderTextColor={Academic.textSecondary}
             value={purpose}
             onChangeText={setPurpose}
             multiline
@@ -255,178 +211,156 @@ export default function DocumentsScreen() {
             maxLength={300}
             textAlignVertical="top"
           />
-          <Text style={[styles.charCount, { color: theme.textSecondary }]}>
-            {purpose.length}/300
-          </Text>
+          <Text style={styles.charCount}>{purpose.length}/300</Text>
 
-          {/* Copies */}
-          <Text style={[styles.fieldLabel, { color: theme.textSecondary }]}>
-            Number of Copies
-          </Text>
+          <SectionHeader title="Copies" />
           <View style={styles.copiesRow}>
-            {[1, 2, 3, 4, 5].map(n => (
-              <Pressable
-                key={n}
-                onPress={() => setCopies(n)}
-                style={[
-                  styles.copyBtn,
-                  { backgroundColor: copies === n ? PRIMARY : theme.backgroundElement },
-                ]}>
-                <Text style={[styles.copyBtnText, { color: copies === n ? '#fff' : theme.textSecondary }]}>
-                  {n}
-                </Text>
-              </Pressable>
-            ))}
+            {[1, 2, 3, 4, 5].map(count => {
+              const active = copies === count;
+              return (
+                <Pressable key={count} onPress={() => setCopies(count)} style={[styles.copyButton, active && styles.copyButtonActive]}>
+                  <Text style={[styles.copyText, active && styles.copyTextActive]}>{count}</Text>
+                </Pressable>
+              );
+            })}
           </View>
 
           <Pressable
-            style={({ pressed }) => [
-              styles.submitBtn,
-              { backgroundColor: PRIMARY, opacity: pressed || submitting ? 0.75 : 1 },
-            ]}
+            style={({ pressed }) => [styles.submitButton, (pressed || submitting) && styles.pressed]}
             onPress={handleSubmit}
             disabled={submitting}>
-            {submitting ? (
-              <ActivityIndicator color="#fff" />
-            ) : (
-              <Text style={styles.submitBtnText}>Submit Request</Text>
-            )}
+            {submitting ? <ActivityIndicator color="#FFFFFF" /> : <Text style={styles.submitButtonText}>Submit Request</Text>}
           </Pressable>
-
         </ScrollView>
       </SafeAreaView>
     );
   }
 
-  // ── Request list ─────────────────────────────────────────────
   return (
-    <SafeAreaView style={[styles.safe, { backgroundColor: theme.background }]}>
+    <SafeAreaView style={styles.safe}>
       <ScrollView
         showsVerticalScrollIndicator={false}
-        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
+        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={Academic.primary} />}
         contentContainerStyle={styles.scroll}>
-
-        <View style={styles.listHeader}>
+        <View style={styles.pageHeader}>
           <View>
-            <Text style={[styles.screenTitle, { color: theme.text }]}>My Documents</Text>
-            <Text style={[styles.screenSub, { color: theme.textSecondary }]}>
-              Track your document requests
-            </Text>
+            <Text style={styles.pageTitle}>Documents</Text>
+            <Text style={styles.pageSub}>Track official CAS document requests.</Text>
           </View>
-          <Pressable
-            style={[styles.newBtn, { backgroundColor: PRIMARY }]}
-            onPress={() => setView('new')}>
-            <Text style={styles.newBtnText}>+ New</Text>
-          </Pressable>
+          <IconButton
+            icon={{ ios: 'plus', android: 'add', web: 'add' }}
+            onPress={() => setView('new')}
+            label="New document request"
+          />
         </View>
 
-        {/* Status legend */}
-        <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.legendRow}>
-          {['submitted', 'under_evaluation', 'processing', 'ready_for_pickup', 'completed'].map(s => (
-            <View key={s} style={[styles.legendPill, { backgroundColor: STATUS_COLOR[s] + '20' }]}>
-              <Text style={[styles.legendText, { color: STATUS_COLOR[s] }]}>
-                {STATUS_LABEL[s]}
-              </Text>
-            </View>
+        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.legendRail}>
+          {['submitted', 'under_evaluation', 'processing', 'ready_for_pickup', 'completed'].map(status => (
+            <StatusBadge key={status} label={STATUS_LABEL[status]} tone={STATUS_TONE[status]} />
           ))}
         </ScrollView>
 
         {loading ? (
-          <ActivityIndicator color={PRIMARY} style={styles.loader} />
+          <ActivityIndicator color={Academic.primary} style={styles.loader} />
         ) : requests.length === 0 ? (
-          <View style={[styles.emptyCard, { backgroundColor: theme.backgroundElement }]}>
-            <Text style={styles.emptyIcon}>📄</Text>
-            <Text style={[styles.emptyTitle, { color: theme.text }]}>No requests yet</Text>
-            <Text style={[styles.emptyText, { color: theme.textSecondary }]}>
-              Tap "+ New" to request an official document from CAS.
-            </Text>
-          </View>
+          <EmptyState
+            title="No document requests"
+            message="Tap the plus button to request an official document."
+            icon={{ ios: 'doc.text', android: 'description', web: 'description' }}
+          />
         ) : (
-          requests.map(r => (
-            <RequestCard
-              key={r.id}
-              item={r}
-              bgEl={theme.backgroundElement}
-              textColor={theme.text}
-              textSec={theme.textSecondary}
-            />
-          ))
+          requests.map(item => <RequestCard key={item.id} item={item} />)
         )}
-
       </ScrollView>
     </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
-  safe: { flex: 1 },
+  safe: { flex: 1, backgroundColor: Academic.background },
   scroll: {
     paddingHorizontal: Spacing.three,
-    paddingBottom: 100,
-    paddingTop: Spacing.three,
-    gap: Spacing.two,
+    paddingTop: Spacing.five,
+    paddingBottom: 128,
+    gap: Spacing.three,
   },
-  listHeader: {
+  pressed: { opacity: 0.72 },
+  pageHeader: {
     flexDirection: 'row',
+    alignItems: 'center',
     justifyContent: 'space-between',
-    alignItems: 'flex-start',
-    paddingBottom: Spacing.one,
+    gap: Spacing.three,
   },
-  screenTitle: { fontSize: 24, fontWeight: '700' },
-  screenSub:   { fontSize: 13, marginTop: 2 },
-  newBtn:      { paddingHorizontal: 16, paddingVertical: 8, borderRadius: 10 },
-  newBtnText:  { color: '#fff', fontWeight: '600', fontSize: 14 },
-
-  // Legend
-  legendRow: { marginBottom: 4 },
-  legendPill: { paddingHorizontal: 10, paddingVertical: 5, borderRadius: 20, marginRight: 6 },
-  legendText: { fontSize: 11, fontWeight: '600' },
-
-  // Cards
-  card:        { borderRadius: 16, padding: Spacing.three, gap: 6 },
-  cardHeader:  { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', gap: 8 },
-  docType:     { fontSize: 16, fontWeight: '700', flex: 1 },
-  statusBadge: { paddingHorizontal: 8, paddingVertical: 3, borderRadius: 20 },
-  statusText:  { fontSize: 11, fontWeight: '600' },
-  cardDetail:  { fontSize: 13 },
-  remarksBox:  { borderRadius: 8, padding: 10, gap: 2 },
-  remarksLabel:{ fontSize: 11, fontWeight: '700' },
-  remarksText: { fontSize: 13 },
-  cardDate:    { fontSize: 11, marginTop: 2 },
-
-  // Empty
-  loader:     { marginTop: Spacing.four },
-  emptyCard:  { borderRadius: 16, padding: 32, alignItems: 'center', gap: 8, marginTop: Spacing.four },
-  emptyIcon:  { fontSize: 40 },
-  emptyTitle: { fontSize: 18, fontWeight: '700' },
-  emptyText:  { fontSize: 14, textAlign: 'center' },
-
-  // Form
-  backBtn:  { alignSelf: 'flex-start', paddingVertical: 4 },
-  backText: { fontSize: 15, fontWeight: '600' },
-
-  docTypeGrid: { gap: 8 },
-  docTypeCard: {
+  pageTitle: { color: Academic.navy, fontSize: 26, fontWeight: '900' },
+  pageSub: { color: Academic.textSecondary, fontSize: 13, marginTop: 3 },
+  legendRail: { gap: Spacing.two, paddingRight: Spacing.three },
+  loader: { marginTop: Spacing.four },
+  requestCard: { gap: 12 },
+  requestHeader: { flexDirection: 'row', alignItems: 'flex-start', gap: 12 },
+  docIcon: {
+    width: 42,
+    height: 42,
     borderRadius: 14,
-    padding: 14,
-    gap: 3,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: Academic.softBlue,
   },
-  docTypeLabel: { fontSize: 15, fontWeight: '600' },
-  docTypeDesc:  { fontSize: 12 },
-
-  fieldLabel: { fontSize: 13, fontWeight: '500', marginTop: Spacing.one },
-  textarea:   { borderRadius: 12, padding: 14, fontSize: 15, minHeight: 100 },
-  charCount:  { fontSize: 11, textAlign: 'right', marginTop: 2 },
-
-  copiesRow: { flexDirection: 'row', gap: 10 },
-  copyBtn:   { width: 48, height: 48, borderRadius: 12, alignItems: 'center', justifyContent: 'center' },
-  copyBtnText: { fontSize: 16, fontWeight: '700' },
-
-  submitBtn:     { height: 52, borderRadius: 14, alignItems: 'center', justifyContent: 'center', marginTop: Spacing.two },
-  submitBtnText: { color: '#fff', fontSize: 16, fontWeight: '600' },
-
-  errorBox:   { backgroundColor: '#FEE2E2', borderRadius: 10, padding: 12 },
-  errorText:  { color: '#DC2626', fontSize: 13 },
-  successBox: { backgroundColor: '#DCFCE7', borderRadius: 10, padding: 12 },
-  successText:{ color: '#16A34A', fontSize: 13, fontWeight: '500' },
+  requestText: { flex: 1, gap: 3 },
+  docTitle: { color: Academic.navy, fontSize: 16, fontWeight: '900' },
+  requestMeta: { color: Academic.textSecondary, fontSize: 12, lineHeight: 17 },
+  requestPurpose: { color: Academic.textSecondary, fontSize: 13, lineHeight: 19 },
+  remarksBox: { borderRadius: 12, padding: 10, gap: 3, backgroundColor: Academic.muted },
+  remarksLabel: { color: Academic.primary, fontSize: 12, fontWeight: '900' },
+  remarksText: { color: Academic.navy, fontSize: 13, lineHeight: 18 },
+  docTypeGrid: { gap: Spacing.two },
+  docTypeCard: {
+    borderRadius: 16,
+    padding: 14,
+    gap: 4,
+    backgroundColor: Academic.card,
+    borderWidth: 1,
+    borderColor: Academic.border,
+  },
+  docTypeCardActive: { borderColor: Academic.primary, backgroundColor: Academic.softBlue },
+  docTypeLabel: { color: Academic.navy, fontSize: 15, fontWeight: '900' },
+  docTypeLabelActive: { color: Academic.primary },
+  docTypeDesc: { color: Academic.textSecondary, fontSize: 12, lineHeight: 17 },
+  textarea: {
+    minHeight: 112,
+    borderRadius: 16,
+    padding: 14,
+    color: Academic.navy,
+    backgroundColor: Academic.card,
+    borderWidth: 1,
+    borderColor: Academic.border,
+    fontSize: 15,
+    lineHeight: 21,
+  },
+  charCount: { color: Academic.textSecondary, fontSize: 12, textAlign: 'right' },
+  copiesRow: { flexDirection: 'row', gap: Spacing.two },
+  copyButton: {
+    width: 48,
+    height: 48,
+    borderRadius: 16,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: Academic.card,
+    borderWidth: 1,
+    borderColor: Academic.border,
+  },
+  copyButtonActive: { backgroundColor: Academic.primary, borderColor: Academic.primary },
+  copyText: { color: Academic.textSecondary, fontSize: 16, fontWeight: '900' },
+  copyTextActive: { color: '#FFFFFF' },
+  submitButton: {
+    height: 52,
+    borderRadius: 16,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: Academic.primary,
+  },
+  submitButtonText: { color: '#FFFFFF', fontSize: 16, fontWeight: '900' },
+  errorBox: { borderRadius: 14, padding: 12, backgroundColor: Academic.errorBg },
+  errorText: { color: Academic.error, fontSize: 13, fontWeight: '800' },
+  successBox: { borderRadius: 14, padding: 12, backgroundColor: Academic.successBg },
+  successText: { color: Academic.success, fontSize: 13, fontWeight: '800' },
 });

@@ -1,3 +1,4 @@
+import { useRouter } from 'expo-router';
 import { useRef, useState } from 'react';
 import {
   ActivityIndicator,
@@ -12,14 +13,10 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
+import { Academic, AcademicIcon, IconButton, StatusBadge } from '@/components/ui/academic-ui';
+import { Spacing } from '@/constants/theme';
 import { useAuth } from '@/context/auth';
 import { apiPost } from '@/lib/api';
-import { useTheme } from '@/hooks/use-theme';
-import { Spacing } from '@/constants/theme';
-
-const PRIMARY = '#208AEF';
-
-// ── Types ─────────────────────────────────────────────────────
 
 type MessageRole = 'user' | 'assistant' | 'system';
 
@@ -39,83 +36,57 @@ interface AIQueryResponse {
   message?: string;
 }
 
-// ── Welcome message ───────────────────────────────────────────
-
 const WELCOME: Message = {
   id: 'welcome',
   role: 'system',
   content:
-    'Hi! I\'m your CAS Assist AI.\n\nI can answer questions about the College of Arts and Sciences — programs, requirements, enrollment, schedules, and policies.\n\nIf I can\'t find an answer, I\'ll create a support ticket for you.',
+    'Hi! I can help with advising, enrollment, document requests, schedules, and CAS office guidance.',
 };
 
-// ── Bubble component ──────────────────────────────────────────
+const SUGGESTIONS = [
+  'How do I request advising?',
+  'Check my queue status',
+  'Enrollment requirements',
+];
 
-function Bubble({
-  message,
-  bgEl,
-  textColor,
-  textSec,
-}: {
-  message: Message;
-  bgEl: string;
-  textColor: string;
-  textSec: string;
-}) {
-  const isUser   = message.role === 'user';
-  const isSystem = message.role === 'system';
+function MessageBubble({ message }: { message: Message }) {
+  const isUser = message.role === 'user';
 
   return (
-    <View style={[styles.bubbleRow, isUser && styles.bubbleRowRight]}>
-      {!isUser && (
-        <View style={styles.avatar}>
-          <Text style={styles.avatarText}>AI</Text>
+    <View style={[styles.messageRow, isUser && styles.messageRowUser]}>
+      {!isUser ? (
+        <View style={styles.botAvatar}>
+          <AcademicIcon
+            name={{ ios: 'sparkles', android: 'auto_awesome', web: 'auto_awesome' }}
+            color={Academic.primary}
+            size={18}
+          />
         </View>
-      )}
-      <View
-        style={[
-          styles.bubble,
-          isUser
-            ? styles.bubbleUser
-            : isSystem
-              ? [styles.bubbleSystem, { backgroundColor: bgEl }]
-              : [styles.bubbleAssistant, { backgroundColor: bgEl }],
-          { maxWidth: '78%' },
-        ]}>
-        <Text
-          style={[
-            styles.bubbleText,
-            { color: isUser ? '#fff' : textColor },
-          ]}>
-          {message.content}
-        </Text>
-        {message.ticketId && (
-          <View style={styles.ticketBadge}>
-            <Text style={styles.ticketBadgeText}>
-              🎫 Ticket created — our staff will respond shortly.
-            </Text>
+      ) : null}
+      <View style={[styles.bubble, isUser ? styles.userBubble : styles.assistantBubble]}>
+        <Text style={[styles.messageText, isUser && styles.userMessageText]}>{message.content}</Text>
+        {message.ticketId ? (
+          <View style={styles.ticketNotice}>
+            <Text style={styles.ticketNoticeText}>Ticket created. CAS staff will follow up shortly.</Text>
           </View>
-        )}
+        ) : null}
       </View>
     </View>
   );
 }
 
-// ── Screen ────────────────────────────────────────────────────
-
 export default function ChatbotScreen() {
-  const theme               = useTheme();
+  const router = useRouter();
   const { profile, session } = useAuth();
-
   const [messages, setMessages] = useState<Message[]>([WELCOME]);
-  const [input, setInput]       = useState('');
-  const [sending, setSending]   = useState(false);
-
+  const [input, setInput] = useState('');
+  const [sending, setSending] = useState(false);
   const listRef = useRef<FlatList<Message>>(null);
 
   const studentId = profile?.id ?? session?.user.id ?? '';
 
   function addMessage(msg: Omit<Message, 'id'>) {
-    const newMsg: Message = { ...msg, id: Date.now().toString() };
+    const newMsg: Message = { ...msg, id: `${Date.now()}-${Math.random()}` };
     setMessages(prev => {
       const next = [...prev, newMsg];
       setTimeout(() => listRef.current?.scrollToEnd({ animated: true }), 100);
@@ -124,8 +95,8 @@ export default function ChatbotScreen() {
     return newMsg;
   }
 
-  async function handleSend() {
-    const text = input.trim();
+  async function sendText(rawText: string) {
+    const text = rawText.trim();
     if (!text || sending) return;
 
     setInput('');
@@ -142,23 +113,23 @@ export default function ChatbotScreen() {
       if (res.isDeflected) {
         addMessage({
           role: 'assistant',
-          content: res.answer!,
+          content: res.answer ?? 'Here is what I found from the CAS knowledge base.',
           isDeflected: true,
         });
       } else {
         addMessage({
           role: 'assistant',
           content:
-            'I couldn\'t find a direct answer in our knowledge base. I\'ve opened a support ticket for you — a CAS staff member will follow up soon.',
+            'I could not find a direct answer in the knowledge base. I opened a support ticket so CAS staff can follow up.',
           isDeflected: false,
           ticketId: res.ticket?.id,
         });
       }
-    } catch (err) {
+    } catch {
       addMessage({
         role: 'assistant',
         content:
-          'Sorry, I\'m unable to connect right now. Please visit the CAS office directly or try again later.',
+          'Sorry, I cannot connect right now. Please coordinate with the CAS office directly or try again later.',
       });
     } finally {
       setSending(false);
@@ -166,15 +137,18 @@ export default function ChatbotScreen() {
   }
 
   return (
-    <SafeAreaView style={[styles.safe, { backgroundColor: theme.background }]}>
-      {/* ── Header ────────────────────────────── */}
-      <View style={[styles.header, { borderBottomColor: theme.backgroundElement }]}>
-        <View style={styles.headerDot} />
-        <View>
-          <Text style={[styles.headerTitle, { color: theme.text }]}>CAS Assistant</Text>
-          <Text style={[styles.headerSub, { color: theme.textSecondary }]}>
-            AI-powered · CAS knowledge base
-          </Text>
+    <SafeAreaView style={styles.safe}>
+      <View style={styles.header}>
+        <IconButton
+          icon={{ ios: 'chevron.left', android: 'arrow_back', web: 'arrow_back' }}
+          onPress={() => router.back()}
+          label="Go back"
+          bg={Academic.muted}
+          color={Academic.textSecondary}
+        />
+        <View style={styles.headerText}>
+          <Text style={styles.headerTitle}>CAS Assist Helpdesk</Text>
+          <Text style={styles.headerSub}>AI Assistant</Text>
         </View>
       </View>
 
@@ -182,170 +156,204 @@ export default function ChatbotScreen() {
         style={styles.flex}
         behavior={Platform.OS === 'ios' ? 'padding' : undefined}
         keyboardVerticalOffset={Platform.OS === 'ios' ? 90 : 0}>
-
-        {/* ── Messages ──────────────────────────── */}
         <FlatList
           ref={listRef}
           data={messages}
-          keyExtractor={m => m.id}
-          contentContainerStyle={styles.messageList}
+          keyExtractor={item => item.id}
           showsVerticalScrollIndicator={false}
+          contentContainerStyle={styles.messageList}
           onContentSizeChange={() => listRef.current?.scrollToEnd({ animated: false })}
-          renderItem={({ item }) => (
-            <Bubble
-              message={item}
-              bgEl={theme.backgroundElement}
-              textColor={theme.text}
-              textSec={theme.textSecondary}
-            />
-          )}
+          ListHeaderComponent={
+            <>
+              <View style={styles.noticeBanner}>
+                <AcademicIcon
+                  name={{ ios: 'info.circle', android: 'info', web: 'info' }}
+                  color={Academic.primary}
+                  size={18}
+                />
+                <Text style={styles.noticeText}>
+                  For official decisions and approvals, please coordinate with the CAS office.
+                </Text>
+              </View>
+              {messages.length === 1 ? (
+                <View style={styles.suggestions}>
+                  {SUGGESTIONS.map(text => (
+                    <Pressable
+                      key={text}
+                      onPress={() => sendText(text)}
+                      style={({ pressed }) => [styles.suggestionChip, pressed && styles.pressed]}>
+                      <Text style={styles.suggestionText}>{text}</Text>
+                    </Pressable>
+                  ))}
+                </View>
+              ) : null}
+            </>
+          }
+          renderItem={({ item }) => <MessageBubble message={item} />}
           ListFooterComponent={
             sending ? (
               <View style={styles.typingRow}>
-                <View style={[styles.avatar, { backgroundColor: PRIMARY + '20' }]}>
-                  <Text style={styles.avatarText}>AI</Text>
+                <View style={styles.botAvatar}>
+                  <AcademicIcon
+                    name={{ ios: 'sparkles', android: 'auto_awesome', web: 'auto_awesome' }}
+                    color={Academic.primary}
+                    size={18}
+                  />
                 </View>
-                <View style={[styles.typingBubble, { backgroundColor: theme.backgroundElement }]}>
-                  <ActivityIndicator size="small" color={PRIMARY} />
+                <View style={styles.typingBubble}>
+                  <ActivityIndicator size="small" color={Academic.primary} />
+                  <StatusBadge label="Thinking" tone="blue" />
                 </View>
               </View>
             ) : null
           }
         />
 
-        {/* ── Input bar ─────────────────────────── */}
-        <View style={[styles.inputBar, { backgroundColor: theme.background, borderTopColor: theme.backgroundElement }]}>
+        <View style={styles.composer}>
           <TextInput
-            style={[styles.input, { backgroundColor: theme.backgroundElement, color: theme.text }]}
-            placeholder="Ask a question..."
-            placeholderTextColor={theme.textSecondary}
+            style={styles.input}
+            placeholder="Type your message..."
+            placeholderTextColor={Academic.textSecondary}
             value={input}
             onChangeText={setInput}
             multiline
             maxLength={400}
             returnKeyType="send"
-            onSubmitEditing={handleSend}
+            onSubmitEditing={() => sendText(input)}
             editable={!sending}
           />
           <Pressable
             style={({ pressed }) => [
-              styles.sendBtn,
-              { backgroundColor: PRIMARY, opacity: pressed || sending || !input.trim() ? 0.5 : 1 },
+              styles.sendButton,
+              (!input.trim() || sending || pressed) && styles.sendButtonMuted,
             ]}
-            onPress={handleSend}
+            onPress={() => sendText(input)}
             disabled={sending || !input.trim()}>
-            <Text style={styles.sendIcon}>↑</Text>
+            <AcademicIcon
+              name={{ ios: 'arrow.up', android: 'arrow_upward', web: 'arrow_upward' }}
+              color="#FFFFFF"
+              size={20}
+            />
           </Pressable>
         </View>
-
       </KeyboardAvoidingView>
     </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
-  safe: { flex: 1 },
+  safe: { flex: 1, backgroundColor: Academic.background },
   flex: { flex: 1 },
-
-  // Header
+  pressed: { opacity: 0.72 },
   header: {
     flexDirection: 'row',
     alignItems: 'center',
+    gap: 12,
     paddingHorizontal: Spacing.three,
-    paddingVertical: 12,
-    borderBottomWidth: 1,
-    gap: 10,
+    paddingTop: Spacing.three,
+    paddingBottom: 12,
   },
-  headerDot: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    backgroundColor: PRIMARY,
+  headerText: { flex: 1, gap: 2 },
+  headerTitle: { color: Academic.navy, fontSize: 19, fontWeight: '900' },
+  headerSub: { color: Academic.textSecondary, fontSize: 13, fontWeight: '700' },
+  messageList: {
+    paddingHorizontal: Spacing.three,
+    paddingTop: Spacing.two,
+    paddingBottom: Spacing.three,
+    gap: 14,
+  },
+  noticeBanner: {
+    borderRadius: 16,
+    padding: 12,
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: 9,
+    backgroundColor: Academic.softBlue,
+  },
+  noticeText: { color: Academic.navy, fontSize: 13, lineHeight: 18, flex: 1 },
+  suggestions: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: 12 },
+  suggestionChip: {
+    paddingHorizontal: 13,
+    paddingVertical: 9,
+    borderRadius: 999,
+    backgroundColor: Academic.card,
+    borderWidth: 1,
+    borderColor: Academic.border,
+  },
+  suggestionText: { color: Academic.primary, fontSize: 13, fontWeight: '800' },
+  messageRow: { flexDirection: 'row', alignItems: 'flex-end', gap: 9 },
+  messageRowUser: { flexDirection: 'row-reverse' },
+  botAvatar: {
+    width: 34,
+    height: 34,
+    borderRadius: 17,
     alignItems: 'center',
     justifyContent: 'center',
+    backgroundColor: Academic.softBlue,
   },
-  headerTitle: { fontSize: 16, fontWeight: '700' },
-  headerSub: { fontSize: 12, marginTop: 1 },
-
-  // Messages
-  messageList: {
-    padding: Spacing.three,
-    gap: 12,
-    paddingBottom: 8,
-  },
-  bubbleRow: {
-    flexDirection: 'row',
-    alignItems: 'flex-end',
+  bubble: {
+    maxWidth: '80%',
+    borderRadius: 18,
+    paddingHorizontal: 14,
+    paddingVertical: 11,
     gap: 8,
   },
-  bubbleRowRight: { flexDirection: 'row-reverse' },
-  avatar: {
-    width: 32,
-    height: 32,
-    borderRadius: 16,
-    backgroundColor: PRIMARY,
-    alignItems: 'center',
-    justifyContent: 'center',
+  assistantBubble: {
+    backgroundColor: Academic.card,
+    borderWidth: 1,
+    borderColor: Academic.border,
+    borderBottomLeftRadius: 5,
   },
-  avatarText: { color: '#fff', fontSize: 11, fontWeight: '700' },
-  bubble: {
+  userBubble: {
+    backgroundColor: Academic.primary,
+    borderBottomRightRadius: 5,
+  },
+  messageText: { color: Academic.navy, fontSize: 14, lineHeight: 20 },
+  userMessageText: { color: '#FFFFFF' },
+  ticketNotice: { borderRadius: 10, padding: 8, backgroundColor: Academic.warningBg },
+  ticketNoticeText: { color: Academic.warningText, fontSize: 12, fontWeight: '800' },
+  typingRow: { flexDirection: 'row', alignItems: 'center', gap: 9 },
+  typingBubble: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
     borderRadius: 18,
     paddingHorizontal: 14,
     paddingVertical: 10,
-    gap: 6,
+    backgroundColor: Academic.card,
+    borderWidth: 1,
+    borderColor: Academic.border,
   },
-  bubbleUser: {
-    backgroundColor: PRIMARY,
-    borderBottomRightRadius: 4,
-  },
-  bubbleAssistant: { borderBottomLeftRadius: 4 },
-  bubbleSystem: {
-    borderRadius: 14,
-    borderBottomLeftRadius: 4,
-    maxWidth: '90%',
-  },
-  bubbleText: { fontSize: 14, lineHeight: 20 },
-  ticketBadge: {
-    backgroundColor: '#FEF3C7',
-    borderRadius: 8,
-    paddingHorizontal: 8,
-    paddingVertical: 6,
-  },
-  ticketBadgeText: { fontSize: 12, color: '#92400E' },
-
-  // Typing indicator
-  typingRow: { flexDirection: 'row', alignItems: 'flex-end', gap: 8, marginTop: 4 },
-  typingBubble: {
-    borderRadius: 18,
-    borderBottomLeftRadius: 4,
-    paddingHorizontal: 16,
-    paddingVertical: 12,
-  },
-
-  // Input
-  inputBar: {
+  composer: {
     flexDirection: 'row',
     alignItems: 'flex-end',
-    paddingHorizontal: Spacing.three,
-    paddingVertical: 10,
-    borderTopWidth: 1,
     gap: 10,
+    paddingHorizontal: Spacing.three,
+    paddingTop: 10,
+    paddingBottom: 12,
+    backgroundColor: Academic.card,
+    borderTopWidth: 1,
+    borderTopColor: Academic.border,
   },
   input: {
     flex: 1,
-    borderRadius: 20,
+    maxHeight: 104,
+    minHeight: 46,
+    borderRadius: 23,
     paddingHorizontal: 16,
-    paddingVertical: 10,
+    paddingVertical: 11,
+    color: Academic.navy,
+    backgroundColor: Academic.muted,
     fontSize: 15,
-    maxHeight: 100,
     lineHeight: 20,
   },
-  sendBtn: {
-    width: 42,
-    height: 42,
-    borderRadius: 21,
+  sendButton: {
+    width: 46,
+    height: 46,
+    borderRadius: 23,
     alignItems: 'center',
     justifyContent: 'center',
+    backgroundColor: Academic.primary,
   },
-  sendIcon: { color: '#fff', fontSize: 18, fontWeight: '700' },
+  sendButtonMuted: { opacity: 0.5 },
 });
