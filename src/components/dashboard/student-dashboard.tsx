@@ -1,4 +1,6 @@
+import { SymbolView } from 'expo-symbols';
 import { useRouter } from 'expo-router';
+import type { ComponentProps } from 'react';
 import { useEffect, useRef, useState } from 'react';
 import {
   ActivityIndicator,
@@ -11,15 +13,21 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
+import { BrandColors, Spacing } from '@/constants/theme';
 import { useAuth } from '@/context/auth';
-import { supabase } from '@/lib/supabase';
 import { useTheme } from '@/hooks/use-theme';
-import { Spacing } from '@/constants/theme';
+import { supabase } from '@/lib/supabase';
 
-const PRIMARY = '#208AEF';
-const ORANGE  = '#F59E0B';
-
-// ── Types ─────────────────────────────────────────────────────
+const PRIMARY = BrandColors.primary;
+const NAVY = '#1F2A44';
+const PAGE_BG = '#F5F7FB';
+const CARD_BG = '#FFFFFF';
+const MUTED = '#71809A';
+const BORDER = '#E8EDF5';
+const SOFT_BLUE = '#EAF4FF';
+const GREEN = '#16A34A';
+const SOFT_GREEN = '#EAF8EF';
+const ORANGE = '#F97316';
 
 interface Announcement {
   id: string;
@@ -29,9 +37,12 @@ interface Announcement {
   published_at: string;
 }
 
-interface TicketSummary {
+interface ActiveTicket {
+  id: string;
+  category: string | null;
   status: string;
-  count: number;
+  created_at: string;
+  priority: string | null;
 }
 
 interface RoomChange {
@@ -45,165 +56,262 @@ interface RoomChange {
   logged_by: { display_name: string } | null;
 }
 
-// ── Helpers ───────────────────────────────────────────────────
+type SymbolName = ComponentProps<typeof SymbolView>['name'];
 
-function getGreeting() {
-  const h = new Date().getHours();
-  if (h < 12) return 'Good morning';
-  if (h < 18) return 'Good afternoon';
-  return 'Good evening';
-}
+const STATUS_COLOR: Record<string, string> = {
+  open: PRIMARY,
+  in_progress: '#F59E0B',
+  pending_review: '#8B5CF6',
+  resolved: GREEN,
+  closed: '#6B7280',
+};
+
+const STATUS_LABEL: Record<string, string> = {
+  open: 'In Queue',
+  in_progress: 'Serving',
+  pending_review: 'Needs Info',
+  resolved: 'Resolved',
+  closed: 'Closed',
+};
 
 function formatDate(iso: string) {
   return new Date(iso).toLocaleDateString('en-PH', {
-    month: 'short', day: 'numeric', year: 'numeric',
+    month: 'short',
+    day: 'numeric',
+    year: 'numeric',
   });
 }
 
-function formatTime(iso: string) {
-  return new Date(iso).toLocaleTimeString('en-PH', {
-    hour: 'numeric', minute: '2-digit', hour12: true,
-  });
+function formatRelative(iso: string) {
+  const diff = Math.max(0, Date.now() - new Date(iso).getTime());
+  const minutes = Math.floor(diff / 60_000);
+
+  if (minutes < 1) return 'Just now';
+  if (minutes < 60) return `${minutes} min${minutes === 1 ? '' : 's'} ago`;
+
+  const hours = Math.floor(minutes / 60);
+  if (hours < 24) return `${hours} hour${hours === 1 ? '' : 's'} ago`;
+
+  const days = Math.floor(hours / 24);
+  return `${days} day${days === 1 ? '' : 's'} ago`;
 }
 
-const STATUS_COLOR: Record<string, string> = {
-  open: '#208AEF', in_progress: '#F59E0B',
-  pending_review: '#8B5CF6', resolved: '#16A34A', closed: '#6B7280',
-};
-const STATUS_LABEL: Record<string, string> = {
-  open: 'Submitted', in_progress: 'Evaluating',
-  pending_review: 'Action Required', resolved: 'Resolved', closed: 'Closed',
-};
+function formatCategory(value: string | null) {
+  if (!value) return 'Advising Request';
+  return value
+    .split(/[_\s-]+/)
+    .filter(Boolean)
+    .map(word => word.charAt(0).toUpperCase() + word.slice(1))
+    .join(' ');
+}
 
-// ── Room change alert card ─────────────────────────────────────
+function getTicketReference(id: string) {
+  const digits = id.replace(/\D/g, '');
+  if (digits.length >= 3) return `T-${digits.slice(-3)}`;
 
-function RoomChangeAlert({
-  item, isAcknowledged, acknowledging, onAcknowledge,
+  const compact = id.replace(/[^a-zA-Z0-9]/g, '').slice(-4).toUpperCase();
+  return compact ? `T-${compact}` : 'Ticket';
+}
+
+function statusText(ticket: ActiveTicket) {
+  if (ticket.status === 'in_progress') return 'Currently serving';
+  if (ticket.status === 'pending_review') return 'Action needed';
+  return formatRelative(ticket.created_at).replace('ago', 'waiting');
+}
+
+function DashboardIcon({
+  name,
+  size = 18,
+  color = PRIMARY,
 }: {
-  item: RoomChange;
-  isAcknowledged: boolean; acknowledging: boolean; onAcknowledge: () => void;
+  name: SymbolName;
+  size?: number;
+  color?: string;
+}) {
+  return <SymbolView name={name} size={size} tintColor={color} />;
+}
+
+function HeroHeader({
+  firstName,
+  readOnly,
+}: {
+  firstName: string;
+  readOnly: boolean;
 }) {
   return (
-    <View style={alertStyles.card}>
-      <View style={alertStyles.header}>
-        <Text style={alertStyles.icon}>⚠️</Text>
-        <View style={alertStyles.headerText}>
-          <Text style={alertStyles.title}>Room Change Alert</Text>
-          {(item.subject_code || item.section) && (
-            <Text style={alertStyles.sub}>
-              {[item.subject_code, item.section].filter(Boolean).join(' · ')}
-            </Text>
+    <View style={styles.hero}>
+      <View style={styles.heroBackdropOne} />
+      <View style={styles.heroBackdropTwo} />
+      <View style={styles.heroContent}>
+        <View style={styles.heroCopy}>
+          <Text style={styles.heroLabel}>CAS Assist Student</Text>
+          <Text style={styles.heroTitle}>Hello, {firstName} <Text style={styles.wave}>👋</Text></Text>
+          <Text style={styles.heroSubtitle}>Here is your academic support overview.</Text>
+          {readOnly && (
+            <View style={styles.readOnlyBadge}>
+              <Text style={styles.readOnlyText}>Read-only</Text>
+            </View>
           )}
         </View>
-        <Text style={alertStyles.time}>{formatTime(item.effective_at)}</Text>
+        <Pressable style={({ pressed }) => [styles.notificationButton, pressed && styles.pressed]}>
+          <DashboardIcon
+            name={{ ios: 'bell', android: 'notifications', web: 'notifications' }}
+            color="#FFFFFF"
+            size={26}
+          />
+        </Pressable>
       </View>
-
-      <View style={alertStyles.roomRow}>
-        <View style={alertStyles.roomBox}>
-          <Text style={alertStyles.roomLabel}>FROM</Text>
-          <Text style={alertStyles.roomValue}>{item.original_room}</Text>
-        </View>
-        <Text style={alertStyles.arrow}>→</Text>
-        <View style={[alertStyles.roomBox, alertStyles.roomBoxNew]}>
-          <Text style={[alertStyles.roomLabel, { color: '#fff' }]}>NOW AT</Text>
-          <Text style={[alertStyles.roomValue, { color: '#fff' }]}>{item.relocated_room}</Text>
-        </View>
-      </View>
-
-      {item.reason && (
-        <Text style={alertStyles.reason}>Reason: {item.reason}</Text>
-      )}
-      {item.logged_by && (
-        <Text style={alertStyles.faculty}>Posted by {item.logged_by.display_name}</Text>
-      )}
-
-      <Pressable
-        onPress={onAcknowledge}
-        disabled={isAcknowledged || acknowledging}
-        style={[alertStyles.ackBtn, isAcknowledged && alertStyles.ackBtnDone]}
-      >
-        {acknowledging ? (
-          <ActivityIndicator size="small" color="#fff" />
-        ) : (
-          <Text style={[alertStyles.ackBtnText, isAcknowledged && { color: '#16A34A' }]}>
-            {isAcknowledged ? 'Acknowledged ✅' : 'Acknowledge'}
-          </Text>
-        )}
-      </Pressable>
     </View>
   );
 }
 
-const alertStyles = StyleSheet.create({
-  card: {
-    backgroundColor: '#FEF3C7',
-    borderRadius: 16,
-    padding: Spacing.three,
-    borderLeftWidth: 4,
-    borderLeftColor: ORANGE,
-    gap: 10,
-  },
-  header:     { flexDirection: 'row', alignItems: 'flex-start', gap: 8 },
-  icon:       { fontSize: 20, marginTop: 1 },
-  headerText: { flex: 1, gap: 2 },
-  title:      { fontSize: 15, fontWeight: '700', color: '#92400E' },
-  sub:        { fontSize: 12, color: '#B45309' },
-  time:       { fontSize: 11, color: '#B45309', marginTop: 2 },
-  roomRow:    { flexDirection: 'row', alignItems: 'center', gap: 10 },
-  roomBox:    {
-    flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.06)',
-    borderRadius: 10,
-    padding: 10,
-    alignItems: 'center',
-    gap: 2,
-  },
-  roomBoxNew: { backgroundColor: ORANGE },
-  roomLabel:  { fontSize: 10, fontWeight: '700', color: '#92400E', letterSpacing: 0.5 },
-  roomValue:  { fontSize: 16, fontWeight: '800', color: '#78350F' },
-  arrow:      { fontSize: 20, color: ORANGE, fontWeight: '700' },
-  reason:     { fontSize: 12, color: '#92400E', fontStyle: 'italic' },
-  faculty:    { fontSize: 11, color: '#B45309' },
-  ackBtn:     { backgroundColor: ORANGE, borderRadius: 10, paddingVertical: 10, alignItems: 'center', marginTop: 2 },
-  ackBtnDone: { backgroundColor: '#DCFCE7' },
-  ackBtnText: { color: '#fff', fontWeight: '600', fontSize: 14 },
-});
+function ActiveRequestCard({ ticket }: { ticket: ActiveTicket }) {
+  const color = STATUS_COLOR[ticket.status] ?? '#6B7280';
 
-// ── Action card ───────────────────────────────────────────────
-
-function ActionCard({
-  label, icon, color, onPress,
-}: { label: string; icon: string; color: string; onPress: () => void }) {
   return (
-    <Pressable
-      style={({ pressed }) => [
-        styles.actionCard, { backgroundColor: color, opacity: pressed ? 0.85 : 1 },
-      ]}
-      onPress={onPress}>
-      <Text style={styles.actionIcon}>{icon}</Text>
-      <Text style={styles.actionLabel}>{label}</Text>
+    <View style={styles.requestCard}>
+      <View style={styles.requestTopRow}>
+        <View style={styles.referencePill}>
+          <Text style={styles.referenceText}>{getTicketReference(ticket.id)}</Text>
+        </View>
+        <View style={[styles.statusBadge, { backgroundColor: color + '14' }]}>
+          <Text style={[styles.statusBadgeText, { color }]}>
+            {(STATUS_LABEL[ticket.status] ?? ticket.status).toUpperCase()}
+          </Text>
+        </View>
+      </View>
+      <Text style={styles.requestTitle} numberOfLines={2}>
+        {formatCategory(ticket.category)}
+      </Text>
+      <View style={styles.metaRow}>
+        <DashboardIcon
+          name={{ ios: 'clock', android: 'schedule', web: 'schedule' }}
+          color={MUTED}
+          size={15}
+        />
+        <Text style={styles.metaText} numberOfLines={1}>{statusText(ticket)}</Text>
+      </View>
+      {ticket.priority && (
+        <Text style={styles.priorityText}>{formatCategory(ticket.priority)} priority</Text>
+      )}
+    </View>
+  );
+}
+
+function RoomChangeCard({
+  item,
+  isAcknowledged,
+  acknowledging,
+  onAcknowledge,
+}: {
+  item: RoomChange;
+  isAcknowledged: boolean;
+  acknowledging: boolean;
+  onAcknowledge: () => void;
+}) {
+  const courseTitle = [item.subject_code, item.section].filter(Boolean).join(' - ') || 'Class Update';
+
+  return (
+    <View style={[styles.roomCard, isAcknowledged ? styles.roomCardDone : styles.roomCardUrgent]}>
+      <View style={styles.roomCardHeader}>
+        <View style={styles.locationIconBubble}>
+          <DashboardIcon
+            name={{ ios: 'location', android: 'location_on', web: 'location_on' }}
+            color={PRIMARY}
+            size={20}
+          />
+        </View>
+        <View style={styles.roomHeaderText}>
+          <Text style={styles.roomTitle} numberOfLines={1}>{courseTitle}</Text>
+          <Text style={styles.roomTime}>{formatRelative(item.effective_at)}</Text>
+        </View>
+        {isAcknowledged && (
+          <DashboardIcon
+            name={{ ios: 'checkmark.circle', android: 'check_circle', web: 'check_circle' }}
+            color={GREEN}
+            size={22}
+          />
+        )}
+      </View>
+
+      <View style={styles.roomPath}>
+        <Text style={styles.oldRoom} numberOfLines={1}>{item.original_room}</Text>
+        <DashboardIcon
+          name={{ ios: 'chevron.right', android: 'chevron_right', web: 'chevron_right' }}
+          color="#8EA0BA"
+          size={16}
+        />
+        <Text style={styles.newRoom} numberOfLines={1}>{item.relocated_room}</Text>
+      </View>
+
+      {(item.reason || item.logged_by) && (
+        <Text style={styles.roomNote} numberOfLines={2}>
+          {[item.reason, item.logged_by && `Posted by ${item.logged_by.display_name}`]
+            .filter(Boolean)
+            .join(' - ')}
+        </Text>
+      )}
+
+      {isAcknowledged ? (
+        <View style={styles.ackDone}>
+          <DashboardIcon
+            name={{ ios: 'checkmark.circle', android: 'check_circle', web: 'check_circle' }}
+            color={GREEN}
+            size={16}
+          />
+          <Text style={styles.ackDoneText}>Acknowledged</Text>
+        </View>
+      ) : (
+        <Pressable
+          onPress={onAcknowledge}
+          disabled={acknowledging}
+          style={({ pressed }) => [
+            styles.ackButton,
+            (pressed || acknowledging) && styles.pressed,
+          ]}>
+          {acknowledging ? (
+            <ActivityIndicator size="small" color="#FFFFFF" />
+          ) : (
+            <Text style={styles.ackButtonText}>Acknowledge Change</Text>
+          )}
+        </Pressable>
+      )}
+    </View>
+  );
+}
+
+function DashboardAction({
+  label,
+  icon,
+  onPress,
+}: {
+  label: string;
+  icon: SymbolName;
+  onPress: () => void;
+}) {
+  return (
+    <Pressable style={({ pressed }) => [styles.actionChip, pressed && styles.pressed]} onPress={onPress}>
+      <DashboardIcon name={icon} color={PRIMARY} size={18} />
+      <Text style={styles.actionChipText}>{label}</Text>
     </Pressable>
   );
 }
 
-// ── Screen ────────────────────────────────────────────────────
-
 export default function StudentDashboard() {
-  const theme  = useTheme();
+  const theme = useTheme();
   const router = useRouter();
   const { profile } = useAuth();
 
   const [announcements, setAnnouncements] = useState<Announcement[]>([]);
-  const [ticketSummary, setTicketSummary] = useState<TicketSummary[]>([]);
-  const [roomChanges, setRoomChanges]     = useState<RoomChange[]>([]);
-  const [loading, setLoading]             = useState(true);
-  const [refreshing, setRefreshing]       = useState(false);
+  const [activeTickets, setActiveTickets] = useState<ActiveTicket[]>([]);
+  const [roomChanges, setRoomChanges] = useState<RoomChange[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
   const [acknowledgedIds, setAcknowledgedIds] = useState<Set<string>>(new Set());
   const [acknowledgingId, setAcknowledgingId] = useState<string | null>(null);
 
   const fetchRoomRef = useRef<(() => Promise<void>) | undefined>(undefined);
 
-  // ── Fetch room changes from the last 24 hours ─────────────
   async function fetchRoomChanges() {
     const since = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
     const { data } = await supabase
@@ -225,6 +333,8 @@ export default function StudentDashboard() {
         .in('spatial_log_id', ids)
         .eq('student_id', profile.id);
       setAcknowledgedIds(new Set((acks ?? []).map((a: { spatial_log_id: string }) => a.spatial_log_id)));
+    } else {
+      setAcknowledgedIds(new Set());
     }
   }
 
@@ -243,7 +353,7 @@ export default function StudentDashboard() {
 
   async function fetchData() {
     const userId = profile?.id;
-    const [annRes, tickRes] = await Promise.all([
+    const [annRes, ticketRes] = await Promise.all([
       supabase
         .from('announcements')
         .select('id, title, body, is_pinned, published_at')
@@ -254,25 +364,22 @@ export default function StudentDashboard() {
       userId
         ? supabase
             .from('advising_ticket_pipeline')
-            .select('status')
+            .select('id, category, status, created_at, priority')
             .eq('student_id', userId)
             .eq('state', 'active')
             .neq('status', 'closed')
+            .order('created_at', { ascending: false })
+            .limit(8)
         : Promise.resolve({ data: [] }),
     ]);
 
     setAnnouncements(annRes.data ?? []);
-
-    const counts: Record<string, number> = {};
-    for (const t of (tickRes.data ?? [])) {
-      counts[t.status] = (counts[t.status] ?? 0) + 1;
-    }
-    setTicketSummary(
-      Object.entries(counts).map(([status, count]) => ({ status, count })),
-    );
+    setActiveTickets((ticketRes.data as ActiveTicket[]) ?? []);
   }
 
-  useEffect(() => { fetchRoomRef.current = fetchRoomChanges; });
+  useEffect(() => {
+    fetchRoomRef.current = fetchRoomChanges;
+  });
 
   async function load() {
     setLoading(true);
@@ -286,7 +393,6 @@ export default function StudentDashboard() {
     setRefreshing(false);
   }
 
-  // ── Real-time: watch spatial_logs for new room changes ────
   useEffect(() => {
     load();
 
@@ -295,215 +401,385 @@ export default function StudentDashboard() {
       .on(
         'postgres_changes',
         { event: 'INSERT', schema: 'public', table: 'spatial_logs' },
-        () => { fetchRoomRef.current?.(); },
+        () => {
+          fetchRoomRef.current?.();
+        },
       )
       .subscribe();
 
-    return () => { supabase.removeChannel(channel); };
+    return () => {
+      supabase.removeChannel(channel);
+    };
   }, [profile?.id]);
 
-  const firstName    = profile?.display_name?.split(' ')[0] ?? 'there';
-  const activeTickets = ticketSummary.reduce((s, t) => s + t.count, 0);
+  const firstName = profile?.display_name?.split(' ')[0] ?? 'there';
+  const pageBackground = theme.background === '#000000' ? theme.background : PAGE_BG;
 
   return (
-    <SafeAreaView style={[styles.safe, { backgroundColor: theme.background }]}>
+    <SafeAreaView style={[styles.safe, { backgroundColor: pageBackground }]}>
       <ScrollView
         showsVerticalScrollIndicator={false}
-        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
+        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={PRIMARY} />}
         contentContainerStyle={styles.scroll}>
+        <HeroHeader
+          firstName={firstName}
+          readOnly={profile?.state === 'archived_read_only'}
+        />
 
-        {/* Header */}
-        <View style={styles.header}>
-          <View>
-            <Text style={[styles.greeting, { color: theme.textSecondary }]}>
-              {getGreeting()},
-            </Text>
-            <Text style={[styles.name, { color: theme.text }]}>{firstName}</Text>
-          </View>
-        </View>
-
-        {/* Role badge */}
-        <View style={styles.badgeRow}>
-          <View style={[styles.badge, { backgroundColor: PRIMARY + '20' }]}>
-            <Text style={[styles.badgeText, { color: PRIMARY }]}>Student</Text>
-          </View>
-          {profile?.state === 'archived_read_only' && (
-            <View style={[styles.badge, { backgroundColor: '#FEF3C7' }]}>
-              <Text style={[styles.badgeText, { color: '#D97706' }]}>Read-only</Text>
-            </View>
-          )}
-        </View>
-
-        {/* ── Room change alerts ─────────────────────────── */}
-        {roomChanges.length > 0 && (
-          <>
-            <View style={styles.sectionHeader}>
-              <Text style={[styles.sectionTitle, { color: theme.text }]}>
-                📍 Class Updates
-              </Text>
-              <View style={styles.liveDot}>
-                <Text style={styles.liveDotText}>LIVE</Text>
-              </View>
-            </View>
-            {roomChanges.map(rc => (
-              <RoomChangeAlert
-                key={rc.id}
-                item={rc}
-                isAcknowledged={acknowledgedIds.has(rc.id)}
-                acknowledging={acknowledgingId === rc.id}
-                onAcknowledge={() => handleAcknowledge(rc.id)}
-              />
-            ))}
-          </>
-        )}
-
-        {/* Active tickets summary */}
-        {activeTickets > 0 && (
-          <View style={[styles.ticketSummaryCard, { backgroundColor: theme.backgroundElement }]}>
-            <View style={styles.ticketSummaryHeader}>
-              <Text style={[styles.ticketSummaryTitle, { color: theme.text }]}>
-                🎫  {activeTickets} active {activeTickets === 1 ? 'ticket' : 'tickets'}
-              </Text>
-              <Pressable onPress={() => router.navigate('/tickets')}>
-                <Text style={[styles.seeAll, { color: PRIMARY }]}>View all</Text>
-              </Pressable>
-            </View>
-            <View style={styles.ticketStatusRow}>
-              {ticketSummary.map(({ status, count }) => (
-                <View
-                  key={status}
-                  style={[
-                    styles.statusPill,
-                    { backgroundColor: (STATUS_COLOR[status] ?? '#6B7280') + '20' },
-                  ]}>
-                  <Text
-                    style={[
-                      styles.statusPillText,
-                      { color: STATUS_COLOR[status] ?? '#6B7280' },
-                    ]}>
-                    {STATUS_LABEL[status] ?? status}: {count}
-                  </Text>
-                </View>
-              ))}
-            </View>
-          </View>
-        )}
-
-        {/* Quick actions */}
-        <Text style={[styles.sectionTitle, { color: theme.text }]}>Quick Access</Text>
-        <View style={styles.actionGrid}>
-          <ActionCard label="Ask AI"        icon="🤖" color={PRIMARY}    onPress={() => router.navigate('/chatbot')} />
-          <ActionCard label="My Tickets"    icon="🎫" color="#F59E0B"    onPress={() => router.navigate('/tickets')} />
-          <ActionCard label="Announcements" icon="📢" color="#16A34A"    onPress={() => router.navigate('/explore')} />
-          <ActionCard label="Documents"     icon="📄" color="#8B5CF6"    onPress={() => router.navigate('/documents')} />
-        </View>
-
-        {/* Recent announcements */}
         <View style={styles.sectionHeader}>
-          <Text style={[styles.sectionTitle, { color: theme.text }]}>Recent Updates</Text>
-          <Pressable onPress={() => router.navigate('/explore')}>
-            <Text style={[styles.seeAll, { color: PRIMARY }]}>See all</Text>
+          <Text style={styles.sectionTitle}>Active Requests</Text>
+          <Pressable onPress={() => router.navigate('/tickets')} hitSlop={8}>
+            <Text style={styles.sectionAction}>View all</Text>
           </Pressable>
         </View>
 
         {loading ? (
-          <ActivityIndicator color={PRIMARY} style={styles.loader} />
-        ) : announcements.length === 0 ? (
-          <View style={[styles.emptyCard, { backgroundColor: theme.backgroundElement }]}>
-            <Text style={[styles.emptyText, { color: theme.textSecondary }]}>
-              No announcements yet.
-            </Text>
+          <View style={styles.loadingCard}>
+            <ActivityIndicator color={PRIMARY} />
+          </View>
+        ) : activeTickets.length === 0 ? (
+          <View style={styles.emptyPanel}>
+            <Text style={styles.emptyTitle}>No active requests</Text>
+            <Text style={styles.emptyText}>Your submitted requests will appear here.</Text>
           </View>
         ) : (
-          announcements.map(a => (
-            <Pressable
-              key={a.id}
-              style={[styles.announcementCard, { backgroundColor: theme.backgroundElement }]}
-              onPress={() => router.navigate('/explore')}>
-              {a.is_pinned && <Text style={styles.pinnedLabel}>📌 Pinned</Text>}
-              <Text
-                style={[styles.announcementTitle, { color: theme.text }]}
-                numberOfLines={1}>
-                {a.title}
-              </Text>
-              <Text
-                style={[styles.announcementBody, { color: theme.textSecondary }]}
-                numberOfLines={2}>
-                {a.body}
-              </Text>
-              <Text style={[styles.announcementDate, { color: theme.textSecondary }]}>
-                {formatDate(a.published_at)}
-              </Text>
-            </Pressable>
+          <ScrollView
+            horizontal
+            showsHorizontalScrollIndicator={false}
+            contentContainerStyle={styles.requestRail}>
+            {activeTickets.map(ticket => (
+              <ActiveRequestCard key={ticket.id} ticket={ticket} />
+            ))}
+          </ScrollView>
+        )}
+
+        <View style={styles.sectionHeader}>
+          <View style={styles.sectionTitleRow}>
+            <Text style={styles.sectionTitle}>Room Changes</Text>
+            {roomChanges.filter(change => !acknowledgedIds.has(change.id)).length > 0 && (
+              <View style={styles.newBadge}>
+                <Text style={styles.newBadgeText}>
+                  {roomChanges.filter(change => !acknowledgedIds.has(change.id)).length} New
+                </Text>
+              </View>
+            )}
+          </View>
+        </View>
+
+        {roomChanges.length === 0 ? (
+          <View style={styles.emptyPanel}>
+            <Text style={styles.emptyTitle}>No room changes</Text>
+            <Text style={styles.emptyText}>Class relocation notices from the last 24 hours will show here.</Text>
+          </View>
+        ) : (
+          roomChanges.map(change => (
+            <RoomChangeCard
+              key={change.id}
+              item={change}
+              isAcknowledged={acknowledgedIds.has(change.id)}
+              acknowledging={acknowledgingId === change.id}
+              onAcknowledge={() => handleAcknowledge(change.id)}
+            />
           ))
         )}
 
+        <View style={styles.secondaryActions}>
+          <DashboardAction
+            label="News"
+            icon={{ ios: 'megaphone', android: 'campaign', web: 'campaign' }}
+            onPress={() => router.navigate('/explore')}
+          />
+          <DashboardAction
+            label="Documents"
+            icon={{ ios: 'doc.text', android: 'description', web: 'description' }}
+            onPress={() => router.navigate('/documents')}
+          />
+        </View>
+
+        <View style={styles.sectionHeader}>
+          <Text style={styles.sectionTitle}>Recent Updates</Text>
+          <Pressable onPress={() => router.navigate('/explore')} hitSlop={8}>
+            <Text style={styles.sectionAction}>See all</Text>
+          </Pressable>
+        </View>
+
+        {announcements.length === 0 ? (
+          <View style={styles.emptyPanel}>
+            <Text style={styles.emptyTitle}>No announcements yet</Text>
+            <Text style={styles.emptyText}>Official CAS updates will appear here.</Text>
+          </View>
+        ) : (
+          announcements.map(announcement => (
+            <Pressable
+              key={announcement.id}
+              style={({ pressed }) => [styles.announcementCard, pressed && styles.pressed]}
+              onPress={() => router.navigate('/explore')}>
+              <View style={styles.announcementTop}>
+                <Text style={styles.announcementTitle} numberOfLines={1}>{announcement.title}</Text>
+                {announcement.is_pinned && (
+                  <DashboardIcon
+                    name={{ ios: 'pin', android: 'push_pin', web: 'push_pin' }}
+                    color={ORANGE}
+                    size={16}
+                  />
+                )}
+              </View>
+              <Text style={styles.announcementBody} numberOfLines={2}>{announcement.body}</Text>
+              <Text style={styles.announcementDate}>{formatDate(announcement.published_at)}</Text>
+            </Pressable>
+          ))
+        )}
       </ScrollView>
+
+      <Pressable
+        onPress={() => router.navigate('/chatbot')}
+        style={({ pressed }) => [styles.chatFab, pressed && styles.pressed]}>
+        <DashboardIcon
+          name={{ ios: 'message.fill', android: 'chat_bubble', web: 'chat_bubble' }}
+          color="#FFFFFF"
+          size={26}
+        />
+      </Pressable>
     </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
-  safe:   { flex: 1 },
-  scroll: { paddingHorizontal: Spacing.three, paddingBottom: 120, gap: Spacing.two },
-
-  header:   {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'flex-start',
-    paddingTop: Spacing.three,
-    paddingBottom: Spacing.one,
+  safe: { flex: 1 },
+  scroll: {
+    paddingHorizontal: Spacing.three,
+    paddingBottom: 152,
+    gap: Spacing.two,
   },
-  greeting: { fontSize: 14 },
-  name:     { fontSize: 24, fontWeight: '700', marginTop: 2 },
-
-  badgeRow:  { flexDirection: 'row', gap: 8 },
-  badge:     { paddingHorizontal: 10, paddingVertical: 4, borderRadius: 20 },
-  badgeText: { fontSize: 12, fontWeight: '600' },
-
-  sectionTitle:  { fontSize: 17, fontWeight: '700', marginTop: Spacing.one },
-  sectionHeader: {
+  pressed: { opacity: 0.72 },
+  hero: {
+    minHeight: 122,
+    marginHorizontal: -Spacing.three,
+    marginBottom: Spacing.three,
+    borderBottomLeftRadius: 24,
+    borderBottomRightRadius: 24,
+    overflow: 'hidden',
+    backgroundColor: PRIMARY,
+    boxShadow: '0 8px 18px rgba(32, 138, 239, 0.28)',
+  },
+  heroBackdropOne: {
+    position: 'absolute',
+    width: 220,
+    height: 220,
+    borderRadius: 110,
+    backgroundColor: 'rgba(255,255,255,0.12)',
+    right: -76,
+    top: -104,
+  },
+  heroBackdropTwo: {
+    position: 'absolute',
+    width: 180,
+    height: 180,
+    borderRadius: 90,
+    backgroundColor: 'rgba(15, 64, 175, 0.26)',
+    left: -72,
+    bottom: -112,
+  },
+  heroContent: {
     flexDirection: 'row',
-    justifyContent: 'space-between',
     alignItems: 'center',
-    marginTop: Spacing.one,
+    justifyContent: 'space-between',
+    paddingTop: Spacing.four,
+    paddingHorizontal: Spacing.three,
+    paddingBottom: Spacing.four,
   },
-  seeAll: { fontSize: 13, fontWeight: '600' },
-
-  liveDot: {
-    backgroundColor: '#16A34A',
-    paddingHorizontal: 8,
-    paddingVertical: 3,
-    borderRadius: 20,
+  heroCopy: { flex: 1, gap: 3 },
+  heroLabel: { color: 'rgba(255,255,255,0.72)', fontSize: 14, fontWeight: '700' },
+  heroTitle: { color: '#FFFFFF', fontSize: 25, fontWeight: '800' },
+  heroSubtitle: { color: '#FFFFFF', fontSize: 15, lineHeight: 21, opacity: 0.96 },
+  wave: { fontSize: 14, color: 'rgba(255,255,255,0.8)' },
+  readOnlyBadge: {
+    alignSelf: 'flex-start',
+    marginTop: Spacing.two,
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: 999,
+    backgroundColor: 'rgba(255,255,255,0.18)',
   },
-  liveDotText: { color: '#fff', fontSize: 10, fontWeight: '700' },
-
-  ticketSummaryCard:   { borderRadius: 14, padding: Spacing.three, gap: 10 },
-  ticketSummaryHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
-  ticketSummaryTitle:  { fontSize: 15, fontWeight: '600' },
-  ticketStatusRow:     { flexDirection: 'row', flexWrap: 'wrap', gap: 6 },
-  statusPill:          { paddingHorizontal: 8, paddingVertical: 4, borderRadius: 20 },
-  statusPillText:      { fontSize: 12, fontWeight: '500' },
-
-  actionGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 12 },
-  actionCard: {
-    width: '47%',
+  readOnlyText: { color: '#FFFFFF', fontSize: 12, fontWeight: '700' },
+  notificationButton: {
+    width: 50,
+    height: 50,
+    borderRadius: 25,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: 'rgba(255,255,255,0.2)',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.2)',
+  },
+  sectionHeader: {
+    minHeight: 32,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  sectionTitleRow: { flexDirection: 'row', alignItems: 'center', gap: Spacing.two },
+  sectionTitle: { color: NAVY, fontSize: 18, fontWeight: '800' },
+  sectionAction: { color: PRIMARY, fontSize: 14, fontWeight: '700' },
+  newBadge: {
+    paddingHorizontal: 9,
+    paddingVertical: 4,
+    borderRadius: 999,
+    backgroundColor: '#FFE4E6',
+  },
+  newBadgeText: { color: '#EF233C', fontSize: 12, fontWeight: '800' },
+  requestRail: { gap: Spacing.three, paddingRight: Spacing.three },
+  requestCard: {
+    width: 238,
+    minHeight: 124,
     borderRadius: 16,
     padding: Spacing.three,
-    gap: 8,
-    aspectRatio: 1.5,
-    justifyContent: 'flex-end',
+    gap: Spacing.two,
+    backgroundColor: CARD_BG,
+    borderWidth: 1,
+    borderColor: BORDER,
+    boxShadow: '0 6px 16px rgba(31, 42, 68, 0.07)',
   },
-  actionIcon:  { fontSize: 28 },
-  actionLabel: { color: '#fff', fontSize: 15, fontWeight: '600' },
-
-  loader:    { marginTop: Spacing.four },
-  emptyCard: { borderRadius: 12, padding: Spacing.three, alignItems: 'center' },
-  emptyText: { fontSize: 14 },
-
-  announcementCard:  { borderRadius: 14, padding: Spacing.three, gap: 4 },
-  pinnedLabel:       { fontSize: 11, color: '#D97706', fontWeight: '600' },
-  announcementTitle: { fontSize: 15, fontWeight: '600' },
-  announcementBody:  { fontSize: 13, lineHeight: 18 },
-  announcementDate:  { fontSize: 11, marginTop: 2 },
+  requestTopRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 8 },
+  referencePill: {
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    borderRadius: 7,
+    backgroundColor: '#EDF2F7',
+  },
+  referenceText: { color: '#60708B', fontSize: 12, fontWeight: '800' },
+  statusBadge: { paddingHorizontal: 9, paddingVertical: 5, borderRadius: 999 },
+  statusBadgeText: { fontSize: 10, fontWeight: '900' },
+  requestTitle: { color: NAVY, fontSize: 16, fontWeight: '800', lineHeight: 21 },
+  metaRow: { flexDirection: 'row', alignItems: 'center', gap: 6 },
+  metaText: { color: MUTED, fontSize: 13, flex: 1 },
+  priorityText: { color: '#A0AEC0', fontSize: 11, fontWeight: '700' },
+  loadingCard: {
+    height: 124,
+    borderRadius: 16,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: CARD_BG,
+    borderWidth: 1,
+    borderColor: BORDER,
+  },
+  emptyPanel: {
+    borderRadius: 16,
+    padding: Spacing.three,
+    backgroundColor: CARD_BG,
+    borderWidth: 1,
+    borderColor: BORDER,
+    gap: 4,
+  },
+  emptyTitle: { color: NAVY, fontSize: 15, fontWeight: '800' },
+  emptyText: { color: MUTED, fontSize: 13, lineHeight: 18 },
+  roomCard: {
+    borderRadius: 16,
+    padding: Spacing.three,
+    gap: 13,
+    backgroundColor: CARD_BG,
+    borderWidth: 1,
+    borderColor: BORDER,
+    boxShadow: '0 6px 16px rgba(31, 42, 68, 0.06)',
+  },
+  roomCardUrgent: { borderLeftWidth: 4, borderLeftColor: '#D92D20' },
+  roomCardDone: { borderLeftWidth: 4, borderLeftColor: GREEN },
+  roomCardHeader: { flexDirection: 'row', alignItems: 'center', gap: 10 },
+  locationIconBubble: {
+    width: 34,
+    height: 34,
+    borderRadius: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: SOFT_BLUE,
+  },
+  roomHeaderText: { flex: 1, gap: 2 },
+  roomTitle: { color: NAVY, fontSize: 16, fontWeight: '800' },
+  roomTime: { color: '#8EA0BA', fontSize: 12, fontWeight: '600' },
+  roomPath: {
+    minHeight: 46,
+    borderRadius: 12,
+    paddingHorizontal: 12,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    backgroundColor: '#F6F8FC',
+  },
+  oldRoom: {
+    flex: 1,
+    color: '#697A94',
+    fontSize: 14,
+    textDecorationLine: 'line-through',
+  },
+  newRoom: {
+    flex: 1,
+    color: '#0F56E8',
+    fontSize: 14,
+    fontWeight: '800',
+    textAlign: 'right',
+  },
+  roomNote: { color: MUTED, fontSize: 12, lineHeight: 17 },
+  ackButton: {
+    height: 40,
+    borderRadius: 10,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#2165F3',
+  },
+  ackButtonText: { color: '#FFFFFF', fontSize: 14, fontWeight: '800' },
+  ackDone: {
+    minHeight: 40,
+    borderRadius: 10,
+    alignItems: 'center',
+    justifyContent: 'center',
+    flexDirection: 'row',
+    gap: 7,
+    backgroundColor: SOFT_GREEN,
+    borderWidth: 1,
+    borderColor: '#BFE8CC',
+  },
+  ackDoneText: { color: GREEN, fontSize: 14, fontWeight: '800' },
+  secondaryActions: {
+    flexDirection: 'row',
+    gap: Spacing.two,
+    marginTop: Spacing.one,
+  },
+  actionChip: {
+    flex: 1,
+    minHeight: 48,
+    borderRadius: 14,
+    paddingHorizontal: 13,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 7,
+    backgroundColor: CARD_BG,
+    borderWidth: 1,
+    borderColor: BORDER,
+  },
+  actionChipText: { color: NAVY, fontSize: 14, fontWeight: '800' },
+  announcementCard: {
+    borderRadius: 16,
+    padding: Spacing.three,
+    gap: 6,
+    backgroundColor: CARD_BG,
+    borderWidth: 1,
+    borderColor: BORDER,
+  },
+  announcementTop: { flexDirection: 'row', alignItems: 'center', gap: Spacing.two },
+  announcementTitle: { color: NAVY, fontSize: 15, fontWeight: '800', flex: 1 },
+  announcementBody: { color: MUTED, fontSize: 13, lineHeight: 18 },
+  announcementDate: { color: '#9AA8BC', fontSize: 11, fontWeight: '600' },
+  chatFab: {
+    position: 'absolute',
+    right: Spacing.three,
+    bottom: 96,
+    width: 58,
+    height: 58,
+    borderRadius: 29,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: PRIMARY,
+    boxShadow: '0 8px 18px rgba(32, 138, 239, 0.3)',
+  },
 });

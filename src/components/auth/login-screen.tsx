@@ -12,25 +12,21 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
+import { Academic, AcademicIcon, SurfaceCard } from '@/components/ui/academic-ui';
+import { Spacing } from '@/constants/theme';
 import { useAuth } from '@/context/auth';
-import { useTheme } from '@/hooks/use-theme';
-
-const PRIMARY = '#208AEF';
-const ERROR   = '#DC2626';
 
 interface Props {
   onNavigateToRegister: () => void;
 }
 
 export default function LoginScreen({ onNavigateToRegister }: Props) {
-  const theme   = useTheme();
   const { signIn } = useAuth();
-
-  const [email, setEmail]       = useState('');
+  const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [showPass, setShowPass] = useState(false);
-  const [error, setError]       = useState<string | null>(null);
-  const [loading, setLoading]   = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [loading, setLoading] = useState(false);
 
   async function handleSignIn() {
     setError(null);
@@ -50,46 +46,44 @@ export default function LoginScreen({ onNavigateToRegister }: Props) {
     setLoading(false);
 
     if (authError) setError(authError);
-    // On success, AuthProvider session updates → AppContent re-renders to AppTabs
   }
 
   return (
-    <SafeAreaView style={[styles.safe, { backgroundColor: theme.background }]}>
-      <KeyboardAvoidingView
-        style={styles.flex}
-        behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
+    <SafeAreaView style={styles.safe}>
+      <KeyboardAvoidingView style={styles.flex} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
         <ScrollView
           contentContainerStyle={styles.scroll}
           keyboardShouldPersistTaps="handled"
           showsVerticalScrollIndicator={false}>
-
-          {/* ── Branding ─────────────────────────────── */}
-          <View style={styles.brandContainer}>
-            <View style={styles.logoBox}>
-              <Text style={styles.logoLetter}>C</Text>
+          <View style={styles.brand}>
+            <View style={styles.logo}>
+              <AcademicIcon
+                name={{ ios: 'building.columns', android: 'account_balance', web: 'account_balance' }}
+                color="#FFFFFF"
+                size={34}
+              />
             </View>
             <Text style={styles.appName}>CAS Assist</Text>
-            <Text style={[styles.appSub, { color: theme.textSecondary }]}>
-              College of Arts and Sciences
-            </Text>
+            <Text style={styles.appSub}>College of Arts and Sciences</Text>
+            <Text style={styles.appCopy}>AI-assisted department information and helpdesk for New Era University.</Text>
           </View>
 
-          {/* ── Form ─────────────────────────────────── */}
-          <View style={styles.card}>
-            <Text style={[styles.formTitle, { color: theme.text }]}>Sign In</Text>
+          <SurfaceCard style={styles.card}>
+            <Text style={styles.formTitle}>Sign in</Text>
+            <Text style={styles.formSub}>Use your institutional account to continue.</Text>
 
-            {error && (
+            {error ? (
               <View style={styles.errorBox}>
                 <Text style={styles.errorText}>{error}</Text>
               </View>
-            )}
+            ) : null}
 
             <View style={styles.fieldGroup}>
-              <Text style={[styles.label, { color: theme.textSecondary }]}>NEU Email</Text>
+              <Text style={styles.label}>NEU Email</Text>
               <TextInput
-                style={[styles.input, { backgroundColor: theme.backgroundElement, color: theme.text }]}
+                style={styles.input}
                 placeholder="yourname@neu.edu.ph"
-                placeholderTextColor={theme.textSecondary}
+                placeholderTextColor={Academic.textSecondary}
                 value={email}
                 onChangeText={setEmail}
                 autoCapitalize="none"
@@ -101,12 +95,12 @@ export default function LoginScreen({ onNavigateToRegister }: Props) {
             </View>
 
             <View style={styles.fieldGroup}>
-              <Text style={[styles.label, { color: theme.textSecondary }]}>Password</Text>
-              <View style={[styles.inputRow, { backgroundColor: theme.backgroundElement }]}>
+              <Text style={styles.label}>Password</Text>
+              <View style={styles.inputRow}>
                 <TextInput
-                  style={[styles.inputInner, { color: theme.text }]}
+                  style={styles.inputInner}
                   placeholder="Enter your password"
-                  placeholderTextColor={theme.textSecondary}
+                  placeholderTextColor={Academic.textSecondary}
                   value={password}
                   onChangeText={setPassword}
                   secureTextEntry={!showPass}
@@ -114,36 +108,26 @@ export default function LoginScreen({ onNavigateToRegister }: Props) {
                   onSubmitEditing={handleSignIn}
                   editable={!loading}
                 />
-                <Pressable onPress={() => setShowPass(v => !v)} hitSlop={8} style={styles.eyeBtn}>
-                  <Text style={[styles.eyeText, { color: theme.textSecondary }]}>
-                    {showPass ? 'Hide' : 'Show'}
-                  </Text>
+                <Pressable onPress={() => setShowPass(value => !value)} hitSlop={8}>
+                  <Text style={styles.showText}>{showPass ? 'Hide' : 'Show'}</Text>
                 </Pressable>
               </View>
             </View>
 
             <Pressable
-              style={({ pressed }) => [styles.primaryBtn, { opacity: pressed || loading ? 0.75 : 1 }]}
+              style={({ pressed }) => [styles.primaryButton, (pressed || loading) && styles.pressed]}
               onPress={handleSignIn}
               disabled={loading}>
-              {loading ? (
-                <ActivityIndicator color="#fff" />
-              ) : (
-                <Text style={styles.primaryBtnText}>Sign In</Text>
-              )}
+              {loading ? <ActivityIndicator color="#FFFFFF" /> : <Text style={styles.primaryButtonText}>Sign In</Text>}
             </Pressable>
-          </View>
+          </SurfaceCard>
 
-          {/* ── Footer ───────────────────────────────── */}
           <View style={styles.footer}>
-            <Text style={[styles.footerText, { color: theme.textSecondary }]}>
-              Don't have an account?{' '}
-            </Text>
+            <Text style={styles.footerText}>Don&apos;t have an account?</Text>
             <Pressable onPress={onNavigateToRegister}>
               <Text style={styles.footerLink}>Register</Text>
             </Pressable>
           </View>
-
         </ScrollView>
       </KeyboardAvoidingView>
     </SafeAreaView>
@@ -151,60 +135,64 @@ export default function LoginScreen({ onNavigateToRegister }: Props) {
 }
 
 const styles = StyleSheet.create({
-  safe: { flex: 1 },
+  safe: { flex: 1, backgroundColor: Academic.background },
   flex: { flex: 1 },
   scroll: {
     flexGrow: 1,
     justifyContent: 'center',
-    paddingHorizontal: 24,
+    paddingHorizontal: Spacing.three,
     paddingVertical: 40,
-    gap: 32,
+    gap: Spacing.four,
   },
-  brandContainer: { alignItems: 'center', gap: 8 },
-  logoBox: {
-    width: 72,
-    height: 72,
-    borderRadius: 20,
-    backgroundColor: PRIMARY,
+  pressed: { opacity: 0.72 },
+  brand: { alignItems: 'center', gap: 8 },
+  logo: {
+    width: 76,
+    height: 76,
+    borderRadius: 24,
     alignItems: 'center',
     justifyContent: 'center',
-    marginBottom: 4,
+    backgroundColor: Academic.primary,
+    boxShadow: '0 7px 18px rgba(32, 138, 239, 0.26)',
   },
-  logoLetter: { fontSize: 36, fontWeight: '700', color: '#fff' },
-  appName: { fontSize: 28, fontWeight: '700', color: PRIMARY, letterSpacing: -0.5 },
-  appSub: { fontSize: 14 },
-  card: { gap: 20 },
-  formTitle: { fontSize: 22, fontWeight: '700' },
-  errorBox: {
-    backgroundColor: '#FEE2E2',
-    borderRadius: 10,
+  appName: { color: Academic.navy, fontSize: 30, fontWeight: '900' },
+  appSub: { color: Academic.primary, fontSize: 14, fontWeight: '900' },
+  appCopy: { color: Academic.textSecondary, fontSize: 13, lineHeight: 18, textAlign: 'center', maxWidth: 300 },
+  card: { gap: 16 },
+  formTitle: { color: Academic.navy, fontSize: 23, fontWeight: '900' },
+  formSub: { color: Academic.textSecondary, fontSize: 14, lineHeight: 20 },
+  errorBox: { borderRadius: 12, padding: 11, backgroundColor: Academic.errorBg },
+  errorText: { color: Academic.error, fontSize: 13, fontWeight: '800' },
+  fieldGroup: { gap: 7 },
+  label: { color: Academic.textSecondary, fontSize: 13, fontWeight: '800' },
+  input: {
+    height: 50,
+    borderRadius: 14,
     paddingHorizontal: 14,
-    paddingVertical: 10,
+    color: Academic.navy,
+    backgroundColor: Academic.muted,
+    fontSize: 15,
   },
-  errorText: { color: ERROR, fontSize: 13 },
-  fieldGroup: { gap: 6 },
-  label: { fontSize: 13, fontWeight: '500' },
-  input: { height: 50, borderRadius: 12, paddingHorizontal: 16, fontSize: 15 },
   inputRow: {
     height: 50,
-    borderRadius: 12,
+    borderRadius: 14,
     flexDirection: 'row',
     alignItems: 'center',
-    paddingHorizontal: 16,
+    gap: 8,
+    paddingHorizontal: 14,
+    backgroundColor: Academic.muted,
   },
-  inputInner: { flex: 1, fontSize: 15 },
-  eyeBtn: { paddingLeft: 8 },
-  eyeText: { fontSize: 13, fontWeight: '500' },
-  primaryBtn: {
+  inputInner: { flex: 1, color: Academic.navy, fontSize: 15 },
+  showText: { color: Academic.primary, fontSize: 13, fontWeight: '900' },
+  primaryButton: {
     height: 52,
-    backgroundColor: PRIMARY,
-    borderRadius: 14,
+    borderRadius: 16,
     alignItems: 'center',
     justifyContent: 'center',
-    marginTop: 4,
+    backgroundColor: Academic.primary,
   },
-  primaryBtnText: { color: '#fff', fontSize: 16, fontWeight: '600' },
-  footer: { flexDirection: 'row', justifyContent: 'center', alignItems: 'center' },
-  footerText: { fontSize: 14 },
-  footerLink: { fontSize: 14, fontWeight: '600', color: PRIMARY },
+  primaryButtonText: { color: '#FFFFFF', fontSize: 16, fontWeight: '900' },
+  footer: { flexDirection: 'row', justifyContent: 'center', alignItems: 'center', gap: 5 },
+  footerText: { color: Academic.textSecondary, fontSize: 14 },
+  footerLink: { color: Academic.primary, fontSize: 14, fontWeight: '900' },
 });

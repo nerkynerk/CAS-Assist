@@ -1,14 +1,22 @@
 import { Tabs, TabList, TabTrigger, TabSlot, type TabTriggerSlotProps, type TabListProps } from 'expo-router/ui';
+import { SymbolView } from 'expo-symbols';
+import type { ComponentProps } from 'react';
 import { Pressable, StyleSheet, View } from 'react-native';
 
 import { ThemedText } from './themed-text';
 import { ThemedView } from './themed-view';
 import { useAuth } from '@/context/auth';
-import { MaxContentWidth, Spacing } from '@/constants/theme';
+import { BrandColors, MaxContentWidth, Spacing } from '@/constants/theme';
+
+type SymbolName = ComponentProps<typeof SymbolView>['name'];
 
 export default function AppTabs() {
   const { profile } = useAuth();
-  const isAdmin = profile?.role === 'staff' || profile?.role === 'super_admin';
+  const role = profile?.role ?? 'student';
+  const isStudent = role === 'student';
+  const isFaculty = role === 'faculty';
+  const isStaff = role === 'staff';
+  const isSuperAdmin = role === 'super_admin';
 
   return (
     <Tabs>
@@ -16,27 +24,29 @@ export default function AppTabs() {
       <TabList asChild>
         <CustomTabList>
           <TabTrigger name="home" href="/" asChild>
-            <TabButton>Home</TabButton>
+            <TabButton icon={{ ios: 'house', android: 'home', web: 'home' }}>
+              {isStudent ? 'Home' : isFaculty ? 'Dashboard' : isStaff ? 'Operations' : 'Overview'}
+            </TabButton>
           </TabTrigger>
-          <TabTrigger name="chatbot" href="/chatbot" asChild>
-            <TabButton>Chat</TabButton>
-          </TabTrigger>
-          <TabTrigger name="tickets" href="/tickets" asChild>
-            <TabButton>Tickets</TabButton>
-          </TabTrigger>
-          <TabTrigger name="explore" href="/explore" asChild>
-            <TabButton>News</TabButton>
-          </TabTrigger>
-          <TabTrigger name="documents" href="/documents" asChild>
-            <TabButton>Docs</TabButton>
-          </TabTrigger>
-          {isAdmin && (
+          {(isStaff || isSuperAdmin) && (
             <TabTrigger name="admin" href="/admin" asChild>
-              <TabButton>Admin</TabButton>
+              <TabButton icon={{ ios: 'briefcase', android: 'work', web: 'work' }}>
+                {isStaff ? 'Queue' : 'Management'}
+              </TabButton>
             </TabTrigger>
           )}
+          {(isStudent || isFaculty) && (
+            <TabTrigger name="tickets" href="/tickets" asChild>
+              <TabButton icon={{ ios: 'doc.text', android: 'assignment', web: 'assignment' }}>
+                {isStudent ? 'Requests' : 'Advising'}
+              </TabButton>
+            </TabTrigger>
+          )}
+          <TabTrigger name="explore" href="/explore" asChild>
+            <TabButton icon={{ ios: 'bell', android: 'notifications', web: 'notifications' }}>Updates</TabButton>
+          </TabTrigger>
           <TabTrigger name="profile" href="/profile" asChild>
-            <TabButton>Profile</TabButton>
+            <TabButton icon={{ ios: 'person', android: 'person', web: 'person' }}>Profile</TabButton>
           </TabTrigger>
         </CustomTabList>
       </TabList>
@@ -44,12 +54,24 @@ export default function AppTabs() {
   );
 }
 
-export function TabButton({ children, isFocused, ...props }: TabTriggerSlotProps) {
+export function TabButton({
+  children,
+  isFocused,
+  icon,
+  ...props
+}: TabTriggerSlotProps & {
+  icon: SymbolName;
+}) {
   return (
     <Pressable {...props} style={({ pressed }) => pressed && styles.pressed}>
       <ThemedView
         type={isFocused ? 'backgroundSelected' : 'backgroundElement'}
         style={styles.tabButtonView}>
+        <SymbolView
+          name={icon}
+          size={17}
+          tintColor={isFocused ? BrandColors.primary : '#8B95A8'}
+        />
         <ThemedText type="small" themeColor={isFocused ? 'text' : 'textSecondary'}>
           {children}
         </ThemedText>
@@ -96,7 +118,10 @@ const styles = StyleSheet.create({
   pressed: { opacity: 0.7 },
   tabButtonView: {
     paddingVertical: Spacing.one,
-    paddingHorizontal: Spacing.three,
+    paddingHorizontal: Spacing.two,
     borderRadius: Spacing.three,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
   },
 });

@@ -11,12 +11,19 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
+import {
+  Academic,
+  AcademicIcon,
+  EmptyState,
+  MetricCard,
+  RoleHeroHeader,
+  SectionHeader,
+  StatusBadge,
+  SurfaceCard,
+} from '@/components/ui/academic-ui';
+import { Spacing } from '@/constants/theme';
 import { useAuth } from '@/context/auth';
 import { supabase } from '@/lib/supabase';
-import { useTheme } from '@/hooks/use-theme';
-import { Spacing } from '@/constants/theme';
-
-const RED = '#DC2626';
 
 interface RecentUser {
   id: string;
@@ -26,45 +33,40 @@ interface RecentUser {
   created_at: string;
 }
 
-const ROLE_COLOR: Record<string, string> = {
-  student: '#208AEF', faculty: '#8B5CF6', staff: '#16A34A', super_admin: '#DC2626',
+const ROLE_TONE: Record<string, 'blue' | 'warning' | 'success' | 'error'> = {
+  student: 'blue',
+  faculty: 'warning',
+  staff: 'success',
+  super_admin: 'error',
 };
-
-function getGreeting() {
-  const h = new Date().getHours();
-  if (h < 12) return 'Good morning';
-  if (h < 18) return 'Good afternoon';
-  return 'Good evening';
-}
 
 function formatDate(iso: string) {
   return new Date(iso).toLocaleDateString('en-PH', { month: 'short', day: 'numeric', year: 'numeric' });
 }
 
-interface StatTileProps { icon: string; label: string; value: number; color: string; }
-function StatTile({ icon, label, value, color }: StatTileProps) {
-  const theme = require('@/hooks/use-theme').useTheme();
+function AdminAction({
+  label,
+  icon,
+  onPress,
+}: {
+  label: string;
+  icon: Parameters<typeof AcademicIcon>[0]['name'];
+  onPress: () => void;
+}) {
   return (
-    <View style={[tileStyles.tile, { backgroundColor: color + '12' }]}>
-      <Text style={tileStyles.icon}>{icon}</Text>
-      <Text style={[tileStyles.value, { color }]}>{value}</Text>
-      <Text style={[tileStyles.label, { color: theme.textSecondary }]}>{label}</Text>
-    </View>
+    <Pressable onPress={onPress} style={({ pressed }) => [styles.actionCard, pressed && styles.pressed]}>
+      <View style={styles.actionIcon}>
+        <AcademicIcon name={icon} color={Academic.primary} size={22} />
+      </View>
+      <Text style={styles.actionLabel}>{label}</Text>
+    </Pressable>
   );
 }
-const tileStyles = StyleSheet.create({
-  tile: { flex: 1, borderRadius: 16, padding: 14, alignItems: 'center', gap: 4 },
-  icon: { fontSize: 22 },
-  value: { fontSize: 26, fontWeight: '800' },
-  label: { fontSize: 11, fontWeight: '500', textAlign: 'center' },
-});
 
 export default function AdminDashboardHome() {
-  const theme  = useTheme();
   const router = useRouter();
   const { profile } = useAuth();
-
-  const [stats, setStats]     = useState({ users: 0, openTickets: 0, actionReq: 0, announcements: 0 });
+  const [stats, setStats] = useState({ users: 0, openTickets: 0, actionReq: 0, announcements: 0 });
   const [recentUsers, setRecentUsers] = useState<RecentUser[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -79,102 +81,121 @@ export default function AdminDashboardHome() {
     ]);
 
     const openCount = (ticketData.data ?? []).filter(t => t.status === 'open').length;
-
     setStats({
-      users:         userCount.count ?? 0,
-      openTickets:   openCount,
-      actionReq:     actionCount.count ?? 0,
+      users: userCount.count ?? 0,
+      openTickets: openCount,
+      actionReq: actionCount.count ?? 0,
       announcements: annCount.count ?? 0,
     });
     setRecentUsers(latestUsers.data ?? []);
   }
 
-  async function load() { setLoading(true); await fetchData(); setLoading(false); }
-  async function onRefresh() { setRefreshing(true); await fetchData(); setRefreshing(false); }
+  async function load() {
+    setLoading(true);
+    await fetchData();
+    setLoading(false);
+  }
+
+  async function onRefresh() {
+    setRefreshing(true);
+    await fetchData();
+    setRefreshing(false);
+  }
+
   useEffect(() => { load(); }, []);
 
-  const firstName = profile?.display_name?.split(' ')[0] ?? 'there';
-
   return (
-    <SafeAreaView style={[styles.safe, { backgroundColor: theme.background }]}>
+    <SafeAreaView style={styles.safe}>
       <ScrollView
         showsVerticalScrollIndicator={false}
-        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
+        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={Academic.primary} />}
         contentContainerStyle={styles.scroll}>
+        <RoleHeroHeader
+          label="CAS Assist Administration"
+          title="System Overview"
+          subtitle={profile?.email ?? 'Monitor users, operations, and CAS service activity.'}
+        />
 
-        {/* Header */}
-        <View style={styles.header}>
-          <View>
-            <Text style={[styles.greeting, { color: theme.textSecondary }]}>{getGreeting()},</Text>
-            <Text style={[styles.name, { color: theme.text }]}>{firstName}</Text>
-            <Text style={[styles.subtitle, { color: theme.textSecondary }]}>{profile?.email}</Text>
-          </View>
-        </View>
-
-        <View style={styles.badgeRow}>
-          <View style={[styles.badge, { backgroundColor: RED + '20' }]}>
-            <Text style={[styles.badgeText, { color: RED }]}>Super Admin</Text>
-          </View>
-        </View>
-
-        {/* System stats */}
-        <Text style={[styles.sectionTitle, { color: theme.text }]}>System Overview</Text>
         {loading ? (
-          <ActivityIndicator color={RED} style={styles.loader} />
+          <ActivityIndicator color={Academic.primary} style={styles.loader} />
         ) : (
           <>
-            <View style={styles.statsRow}>
-              <StatTile icon="👥" label="Total Users" value={stats.users} color="#208AEF" />
-              <StatTile icon="🎫" label="Open Tickets" value={stats.openTickets} color="#F59E0B" />
+            <View style={styles.metricsRow}>
+              <MetricCard
+                label="Total users"
+                value={stats.users}
+                icon={{ ios: 'person.2', android: 'groups', web: 'groups' }}
+                tone="blue"
+              />
+              <MetricCard
+                label="Open tickets"
+                value={stats.openTickets}
+                icon={{ ios: 'clock', android: 'schedule', web: 'schedule' }}
+                tone="warning"
+              />
             </View>
-            <View style={styles.statsRow}>
-              <StatTile icon="⚠️" label="Action Required" value={stats.actionReq} color="#8B5CF6" />
-              <StatTile icon="📢" label="Announcements" value={stats.announcements} color="#16A34A" />
+            <View style={styles.metricsRow}>
+              <MetricCard
+                label="Action required"
+                value={stats.actionReq}
+                icon={{ ios: 'exclamationmark.circle', android: 'priority_high', web: 'priority_high' }}
+                tone="error"
+              />
+              <MetricCard
+                label="Announcements"
+                value={stats.announcements}
+                icon={{ ios: 'megaphone', android: 'campaign', web: 'campaign' }}
+                tone="success"
+              />
             </View>
           </>
         )}
 
-        {/* Quick actions */}
-        <Text style={[styles.sectionTitle, { color: theme.text }]}>Admin Actions</Text>
-        <View style={styles.adminGrid}>
-          {[
-            { label: 'Manage Tickets', icon: '🎫', color: '#208AEF', nav: () => router.navigate('/admin') },
-            { label: 'Post Announcement', icon: '📢', color: '#16A34A', nav: () => router.navigate('/admin') },
-            { label: 'Manage Users', icon: '👥', color: '#8B5CF6', nav: () => router.navigate('/admin') },
-            { label: 'Ask AI', icon: '🤖', color: '#F59E0B', nav: () => router.navigate('/chatbot') },
-          ].map(a => (
-            <Pressable
-              key={a.label}
-              onPress={a.nav}
-              style={({ pressed }) => [styles.adminCard, { backgroundColor: a.color, opacity: pressed ? 0.85 : 1 }]}>
-              <Text style={styles.adminIcon}>{a.icon}</Text>
-              <Text style={styles.adminLabel}>{a.label}</Text>
-            </Pressable>
-          ))}
+        <SectionHeader title="Admin Tools" action="Open panel" onAction={() => router.navigate('/admin')} />
+        <View style={styles.actionGrid}>
+          <AdminAction
+            label="Ticket Operations"
+            icon={{ ios: 'list.bullet', android: 'format_list_bulleted', web: 'format_list_bulleted' }}
+            onPress={() => router.navigate('/admin')}
+          />
+          <AdminAction
+            label="Post Announcement"
+            icon={{ ios: 'megaphone', android: 'campaign', web: 'campaign' }}
+            onPress={() => router.navigate('/admin')}
+          />
+          <AdminAction
+            label="Document Requests"
+            icon={{ ios: 'doc.text', android: 'description', web: 'description' }}
+            onPress={() => router.navigate('/admin')}
+          />
+          <AdminAction
+            label="Users"
+            icon={{ ios: 'person.crop.circle.badge.checkmark', android: 'manage_accounts', web: 'manage_accounts' }}
+            onPress={() => router.navigate('/admin')}
+          />
         </View>
 
-        {/* Recently registered users */}
-        <Text style={[styles.sectionTitle, { color: theme.text }]}>Recently Registered</Text>
+        <SectionHeader title="Recently Registered" />
         {recentUsers.length === 0 ? (
-          <View style={[styles.emptyCard, { backgroundColor: theme.backgroundElement }]}>
-            <Text style={[styles.emptyText, { color: theme.textSecondary }]}>No users registered yet.</Text>
-          </View>
+          <EmptyState
+            title="No users yet"
+            message="New account registry entries will appear here."
+            icon={{ ios: 'person.2', android: 'groups', web: 'groups' }}
+          />
         ) : (
-          recentUsers.map(u => {
-            const rc = ROLE_COLOR[u.role] ?? '#6B7280';
-            return (
-              <View key={u.id} style={[styles.userCard, { backgroundColor: theme.backgroundElement }]}>
-                <View style={styles.userLeft}>
-                  <Text style={[styles.userName, { color: theme.text }]}>{u.display_name}</Text>
-                  <Text style={[styles.userEmail, { color: theme.textSecondary }]}>{u.email}</Text>
-                  <Text style={[styles.userDate, { color: theme.textSecondary }]}>Joined {formatDate(u.created_at)}</Text>
-                </View>
-                <View style={[styles.rolePill, { backgroundColor: rc + '20' }]}>
-                  <Text style={[styles.rolePillText, { color: rc }]}>{u.role}</Text>
-                </View>
+          recentUsers.map(user => (
+            <SurfaceCard key={user.id} style={styles.userCard}>
+              <View style={styles.userAvatar}>
+                <Text style={styles.userInitial}>{(user.display_name || 'U')[0].toUpperCase()}</Text>
               </View>
-            );
-          })
+              <View style={styles.userInfo}>
+                <Text style={styles.userName} numberOfLines={1}>{user.display_name}</Text>
+                <Text style={styles.userEmail} numberOfLines={1}>{user.email}</Text>
+                <Text style={styles.userDate}>Joined {formatDate(user.created_at)}</Text>
+              </View>
+              <StatusBadge label={user.role.replace('_', ' ')} tone={ROLE_TONE[user.role] ?? 'muted'} />
+            </SurfaceCard>
+          ))
         )}
       </ScrollView>
     </SafeAreaView>
@@ -182,31 +203,51 @@ export default function AdminDashboardHome() {
 }
 
 const styles = StyleSheet.create({
-  safe: { flex: 1 },
-  scroll: { paddingHorizontal: Spacing.three, paddingBottom: 100, gap: Spacing.two },
-  header: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', paddingTop: Spacing.three, paddingBottom: Spacing.one },
-  greeting: { fontSize: 14 },
-  name: { fontSize: 24, fontWeight: '700', marginTop: 2 },
-  subtitle: { fontSize: 13, marginTop: 2 },
-  signOutBtn: { paddingHorizontal: 12, paddingVertical: 6, borderRadius: 8, marginTop: 4 },
-  signOutText: { fontSize: 13 },
-  badgeRow: { flexDirection: 'row', gap: 8 },
-  badge: { paddingHorizontal: 10, paddingVertical: 4, borderRadius: 20 },
-  badgeText: { fontSize: 12, fontWeight: '600' },
-  sectionTitle: { fontSize: 17, fontWeight: '700', marginTop: Spacing.one },
-  statsRow: { flexDirection: 'row', gap: 12 },
+  safe: { flex: 1, backgroundColor: Academic.background },
+  scroll: {
+    paddingHorizontal: Spacing.three,
+    paddingBottom: 128,
+    gap: Spacing.three,
+  },
+  pressed: { opacity: 0.72 },
   loader: { marginTop: Spacing.four },
-  adminGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 12 },
-  adminCard: { width: '47%', borderRadius: 16, padding: Spacing.three, gap: 8, aspectRatio: 1.5, justifyContent: 'flex-end' },
-  adminIcon: { fontSize: 28 },
-  adminLabel: { color: '#fff', fontSize: 15, fontWeight: '600' },
-  emptyCard: { borderRadius: 12, padding: Spacing.three, alignItems: 'center' },
-  emptyText: { fontSize: 14 },
-  userCard: { borderRadius: 14, padding: Spacing.three, flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
-  userLeft: { flex: 1, gap: 3 },
-  userName: { fontSize: 15, fontWeight: '600' },
-  userEmail: { fontSize: 12 },
-  userDate: { fontSize: 11 },
-  rolePill: { paddingHorizontal: 8, paddingVertical: 3, borderRadius: 20 },
-  rolePillText: { fontSize: 11, fontWeight: '600' },
+  metricsRow: { flexDirection: 'row', gap: Spacing.three },
+  actionGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: Spacing.two },
+  actionCard: {
+    width: '48%',
+    minHeight: 88,
+    borderRadius: 16,
+    padding: 12,
+    gap: 8,
+    backgroundColor: Academic.card,
+    borderWidth: 1,
+    borderColor: Academic.border,
+  },
+  actionIcon: {
+    width: 36,
+    height: 36,
+    borderRadius: 13,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: Academic.softBlue,
+  },
+  actionLabel: { color: Academic.navy, fontSize: 13, lineHeight: 17, fontWeight: '900' },
+  userCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+  },
+  userAvatar: {
+    width: 42,
+    height: 42,
+    borderRadius: 16,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: Academic.softBlue,
+  },
+  userInitial: { color: Academic.primary, fontSize: 18, fontWeight: '900' },
+  userInfo: { flex: 1, gap: 2 },
+  userName: { color: Academic.navy, fontSize: 15, fontWeight: '900' },
+  userEmail: { color: Academic.textSecondary, fontSize: 12 },
+  userDate: { color: Academic.textSecondary, fontSize: 11, fontWeight: '700' },
 });
